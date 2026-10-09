@@ -41,8 +41,6 @@ build-backend = "uv_build"
 [tool.ruff]
 line-length = 100
 target-version = "py312"
-# Code blocks in Markdown (specs, README) are illustrative, not source to lint/format
-extend-exclude = ["*.md"]
 
 [tool.ruff.lint]
 select = ["E", "F", "W", "I", "B", "UP"]

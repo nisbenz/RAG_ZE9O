@@ -135,21 +135,26 @@ The extension only decides between the two text types; it never overrides a bina
 ```python
 ExtractionConfig(
     use_cache=False,
-    output_format="markdown",                 # headings + tables survive (Req 2.2, 2.3)
-    pages=PageConfig(extract_pages=True),     # per-page text for page numbers + header/footer removal
-    ocr_strategy="auto",                      # page-level routing: OCR only text-less pages (Req 3.2)
+    output_format="markdown",  # headings + tables survive (Req 2.2, 2.3)
+    pages=PageConfig(extract_pages=True),  # per-page text for page numbers + header/footer removal
+    ocr_strategy="auto",  # page-level routing: OCR only text-less pages (Req 3.2)
     ocr_embedded_images=False,
     pdf_options=PdfConfig(extract_images=False, extract_tables=True, extract_annotations=False),
-    security_limits=SecurityLimits(max_pages=s.max_pages),   # ZIP-bomb defaults kept (ratio 100:1)
+    security_limits=SecurityLimits(max_pages=s.max_pages),  # ZIP-bomb defaults kept (ratio 100:1)
     extraction_timeout_secs=timeout_s,
     ocr=OcrConfig(
         backend="tesseract",
         language=["ara", "fra", "eng"],
-        tessdata_path=str(s.tessdata_prefix),               # verified by verify_tessdata()
-        quality_thresholds=OcrQualityThresholds(min_non_whitespace_per_page=s.ocr_min_chars_per_page),
+        tessdata_path=str(s.tessdata_prefix),  # verified by verify_tessdata()
+        quality_thresholds=OcrQualityThresholds(
+            min_non_whitespace_per_page=s.ocr_min_chars_per_page
+        ),
         tesseract_config=TesseractConfig(
-            language=["ara", "fra", "eng"], output_format="text",
-            enable_table_detection=False, use_cache=False),
+            language=["ara", "fra", "eng"],
+            output_format="text",
+            enable_table_detection=False,
+            use_cache=False,
+        ),
     ),
 )
 ```
@@ -198,10 +203,17 @@ Empty sections (after normalization) are dropped. If **no** section remains → 
 ### `web.extract_html` (run in a thread)
 
 ```python
-md = trafilatura.extract(html_bytes, url=final_url, output_format="markdown", include_tables=True,
-                         include_comments=False, include_images=False, include_links=False,
-                         favor_precision=True)
-meta = trafilatura.extract_metadata(html_bytes)   # meta.title (site suffix already stripped)
+md = trafilatura.extract(
+    html_bytes,
+    url=final_url,
+    output_format="markdown",
+    include_tables=True,
+    include_comments=False,
+    include_images=False,
+    include_links=False,
+    favor_precision=True,
+)
+meta = trafilatura.extract_metadata(html_bytes)  # meta.title (site suffix already stripped)
 ```
 
 `md is None or blank` → `EmptyDocument`. `parser = f"trafilatura {version}"`.
@@ -275,39 +287,43 @@ meta = trafilatura.extract_metadata(html_bytes)   # meta.title (site suffix alre
 Visibility = Literal["public", "members"]
 SourceType = Literal["file", "web"]
 
+
 class Section(BaseModel, frozen=True):
     text: str
     heading: str | None = None
-    page: int | None = None            # 1-based; None when the format has no pages
-    language: str | None = None        # ISO 639-1 or "und"
+    page: int | None = None  # 1-based; None when the format has no pages
+    language: str | None = None  # ISO 639-1 or "und"
+
 
 class ParsedDocument(BaseModel, frozen=True):
-    content_hash: str                  # sha256 hex of raw bytes (files) / normalized text (web)
+    content_hash: str  # sha256 hex of raw bytes (files) / normalized text (web)
     title: str
-    source: str                        # original filename, or final URL after redirects
+    source: str  # original filename, or final URL after redirects
     source_type: SourceType
     mime_type: str
     visibility: Visibility
-    language: str                      # "ar" | "fr" | "en" | "mixed" | "und"
-    text: str                          # normalized, sections joined by blank lines
+    language: str  # "ar" | "fr" | "en" | "mixed" | "und"
+    text: str  # normalized, sections joined by blank lines
     sections: list[Section]
     ocr_used: bool
-    parser: str                        # e.g. "xberg 1.3.6", "trafilatura 2.3.1", "text"
+    parser: str  # e.g. "xberg 1.3.6", "trafilatura 2.3.1", "text"
     page_count: int | None
-    warnings: list[str] = []           # non-fatal parser warnings (e.g. "1 OCR line removed")
-    created_at: datetime               # UTC
+    warnings: list[str] = []  # non-fatal parser warnings (e.g. "1 OCR line removed")
+    created_at: datetime  # UTC
 ```
 
 ```python
 # ingest/settings.py — env-driven, defaults shown
 class IngestSettings(BaseSettings):
-    tessdata_prefix: Path = Path("/app/models/tessdata")   # env TESSDATA_PREFIX (already set in Dockerfile)
+    tessdata_prefix: Path = Path(
+        "/app/models/tessdata"
+    )  # env TESSDATA_PREFIX (already set in Dockerfile)
     ocr_languages: list[str] = ["ara", "fra", "eng"]
     ocr_min_chars_per_page: int = 32
     max_file_mb: int = 25
     max_pages: int = 300
-    parse_timeout_s: int = 60          # hang guard per document
-    ocr_page_timeout_s: int = 10       # extra budget per PDF page / image
+    parse_timeout_s: int = 60  # hang guard per document
+    ocr_page_timeout_s: int = 10  # extra budget per PDF page / image
     max_concurrency: int = 1
     web_timeout_s: float = 15
     web_max_bytes: int = 5 * 1024 * 1024
@@ -317,7 +333,9 @@ class IngestSettings(BaseSettings):
     lang_min_chars: int = 20
     lang_min_prob: float = 0.5
     lang_mixed_share: float = 0.2
-    lang_default: Literal["ar", "fr", "en"] = "fr"   # detect_language() when no letters (open question 4)
+    lang_default: Literal["ar", "fr", "en"] = (
+        "fr"  # detect_language() when no letters (open question 4)
+    )
 ```
 
 All fields except `tessdata_prefix` are read with the env prefix `INGEST_`. The new variables are
@@ -328,7 +346,8 @@ shared file; `config.Settings` can compose it later.
 
 ```python
 class IngestError(Exception):
-    code: str; message: str            # message is safe to show to an admin
+    code: str
+    message: str  # message is safe to show to an admin
 ```
 
 | Error | `code` | Raised when | Suggested HTTP (for the API stage) |
