@@ -2,6 +2,10 @@
 
 Assumptions until the design's open questions are answered: `tessdata_fast`, `lang_default="fr"`,
 real Arabic scans supplied later by nisbenz, and I own the tessdata part of `scripts/download_models.py`.
+
+Implementation note: Pillow here has libraqm, so a correctly shaped synthetic `arabic_notice.png` is
+generated and tested. Real scans (`arabic_scan.pdf`, `arabic_photo.jpg`) are still wanted for
+real-world quality; their tests skip until the files exist.
 Each task is test-first: write the listed tests, see them fail, then implement. From task 1.3 on, every
 pushed task must keep the GitHub Actions CI workflow green.
 
@@ -35,14 +39,14 @@ pushed task must keep the GitHub Actions CI workflow green.
   - Also covers eequaled's tests as they land; the workflow is not specific to preprocessing.
   - _Requirements: 8.2_
 
-- [ ] 2. Output contract and errors
-- [ ] 2.1 Create `src/mcclub_rag/ingest/models.py`
+- [x] 2. Output contract and errors
+- [x] 2.1 Create `src/mcclub_rag/ingest/models.py`
   - `Visibility`, `SourceType`, frozen `Section` and `ParsedDocument` exactly as in the design.
   - Internal dataclasses `RawPage(number, content, sheet_name, tables)` and `RawExtraction(...)`.
   - `tests/test_models.py`: `visibility="admin"` raises a validation error; models are frozen;
     a `ParsedDocument` JSON round-trip works.
   - _Requirements: 1.1, 1.3_
-- [ ] 2.2 Create `src/mcclub_rag/ingest/errors.py`
+- [x] 2.2 Create `src/mcclub_rag/ingest/errors.py`
   - `IngestError(code, message)` plus the subclasses and codes from the design's error table
     (`InvalidInput`, `FileTooLarge`, `UnsupportedFileType`, `ParseError`, `ParseTimeout`, `EmptyDocument`,
     `FetchError`, `UrlNotAllowed`, `OcrConfigError`). Add an `ALL_ERRORS` tuple for the coverage check in 12.3.
@@ -50,8 +54,8 @@ pushed task must keep the GitHub Actions CI workflow green.
     `UrlNotAllowed` → `FetchError`).
   - _Requirements: 2.5, 2.6, 2.7, 3.4, 3.6, 4.4, 4.5, 4.6, 8.3_
 
-- [ ] 3. Text normalization (`src/mcclub_rag/text/normalize.py`)
-- [ ] 3.1 `normalize_text` and `rejoin_hyphens`
+- [x] 3. Text normalization (`src/mcclub_rag/text/normalize.py`)
+- [x] 3.1 `normalize_text` and `rejoin_hyphens`
   - `tests/test_normalize.py`, table-driven:
     - CRLF; C0/C1 controls removed
     - U+200B/FEFF/00AD/bidi controls/LRM/RLM removed; ZWNJ/ZWJ kept
@@ -62,14 +66,14 @@ pushed task must keep the GitHub Actions CI workflow green.
     - idempotence: `f(f(x)) == f(x)`
   - Implement in the order given in the design.
   - _Requirements: 5.1, 5.2, 5.3, 5.5_
-- [ ] 3.2 `strip_repeated_lines(pages)`
+- [x] 3.2 `strip_repeated_lines(pages)`
   - Tests:
     - a 5-page input with "Club MC — Page N / 5" footers and a repeated header is stripped;
     - a line repeated on only 2 of 5 pages is kept;
     - inputs with fewer than 3 pages are returned unchanged;
     - body lines that happen to repeat mid-page are untouched.
   - _Requirements: 5.4, 5.5_
-- [ ] 3.3 `fold_for_search(s)`
+- [x] 3.3 `fold_for_search(s)`
   - Tests:
     - أحمد/إحمد/آحمد → احمد; مدرسة → مدرسه; مستشفى → مستشفي
     - harakat and tatweel stripped; ٱ → ا
@@ -77,8 +81,8 @@ pushed task must keep the GitHub Actions CI workflow green.
     - output is stable when applied twice
   - _Requirements: 5.3_
 
-- [ ] 4. Language detection (`src/mcclub_rag/text/lang.py`)
-- [ ] 4.1 `detect` and `assign_languages`
+- [x] 4. Language detection (`src/mcclub_rag/text/lang.py`)
+- [x] 4.1 `detect` and `assign_languages`
   - Lazy singleton `LanguageIdentifier.from_model_file(MODEL_FILE, norm_probs=True)` with
     `set_languages(settings.lang_codes)`. `detect(text) -> LangResult(code, prob)` applying the
     `lang_min_chars` / `lang_min_prob` rules; `assign_languages(sections) -> (sections_with_lang, doc_language)`
@@ -90,7 +94,7 @@ pushed task must keep the GitHub Actions CI workflow green.
     - 95% fr + 5% en → `fr`
     - all-empty sections → `und`
   - _Requirements: 6.1, 6.2, 6.3_
-- [ ] 4.2 `detect_language(text) -> Literal["ar","fr","en"]` (frozen API for the answer layer)
+- [x] 4.2 `detect_language(text) -> Literal["ar","fr","en"]` (frozen API for the answer layer)
   - Tests:
     - "متى الاجتماع؟" → ar (the Arabic-script shortcut works on short text)
     - "Quand est la réunion du club ?" → fr; "When is the club meeting?" → en
@@ -98,7 +102,7 @@ pushed task must keep the GitHub Actions CI workflow green.
     - the return value is always in {ar, fr, en}, checked over a small parametrized list incl. "ok"
   - _Requirements: 6.4_
 
-- [ ] 5. File type sniffing (`src/mcclub_rag/ingest/sniff.py`)
+- [x] 5. File type sniffing (`src/mcclub_rag/ingest/sniff.py`)
   - `detect_type(data, filename) -> DetectedType(mime, kind)` per the design's signature table. ZIP
     inspection reads the central directory only (`zipfile.ZipFile(io.BytesIO(data)).namelist()`).
   - `tests/test_sniff.py` (synthetic bytes, no fixtures), one case per table row:
@@ -111,8 +115,8 @@ pushed task must keep the GitHub Actions CI workflow green.
     - a `.md` file → `text/markdown`.
   - _Requirements: 2.5, 2.6_
 
-- [ ] 6. Test fixtures and tessdata
-- [ ] 6.1 Fixture generator `tests/fixtures/make_fixtures.py` and committed outputs
+- [x] 6. Test fixtures and tessdata
+- [x] 6.1 Fixture generator `tests/fixtures/make_fixtures.py` and committed outputs
   - Deterministic generation (fixed text, no timestamps where the library allows) of:
     - **PDFs:**
       - `text.pdf`: 4 pages of realistic length, with a repeated "Club MC — Page N / 4" footer and a heading per page; minimal hand-written PDF writer as in the design spike
@@ -128,7 +132,7 @@ pushed task must keep the GitHub Actions CI workflow green.
   - `tests/fixtures/README.md` lists every file and states that `arabic_notice.jpg` / `arabic_scan.pdf`
     are real scans to be added by nisbenz.
   - _Requirements: 8.1_
-- [ ] 6.2 Tessdata download step in `scripts/download_models.py`
+- [x] 6.2 Tessdata download step in `scripts/download_models.py`
   - `download_tessdata(dest: Path, variant: Literal["fast","best"]="fast")`:
     - fetches `ara`, `fra`, `eng` from `tesseract-ocr/tessdata_<variant>` at tag `4.1.0` with httpx;
     - verifies pinned SHA-256s (computed once and hard-coded);
@@ -144,7 +148,7 @@ pushed task must keep the GitHub Actions CI workflow green.
     an existing good file isn't re-downloaded.
   - _Requirements: 3.3, 3.4, 7.1_
 
-- [ ] 7. OCR configuration (`src/mcclub_rag/ingest/ocr.py`)
+- [x] 7. OCR configuration (`src/mcclub_rag/ingest/ocr.py`)
   - `verify_tessdata(settings) -> Path`: every `{lang}.traineddata` in `settings.ocr_languages` exists and
     is non-empty, else `OcrConfigError` naming the missing languages and the download command.
   - `timeout_budget(kind, page_count, settings) -> int` and `build_xberg_config(settings, timeout_s)`
@@ -158,12 +162,12 @@ pushed task must keep the GitHub Actions CI workflow green.
     - budget = 60 + 10×pages for PDFs, 70 for images, 60 otherwise
   - _Requirements: 3.1, 3.2, 3.3, 3.4, 7.1, 7.3_
 
-- [ ] 8. File parsing (`src/mcclub_rag/ingest/parse.py`)
-- [ ] 8.1 `decode_text(data)`
+- [x] 8. File parsing (`src/mcclub_rag/ingest/parse.py`)
+- [x] 8.1 `decode_text(data)`
   - Tests: UTF-8 with BOM; `latin1.txt`; `arabic_cp1256.txt` round-trips to the expected Arabic string;
     undecodable random bytes → `ParseError`.
   - _Requirements: 2.4_
-- [ ] 8.2 `map_xberg_error(exc)`
+- [x] 8.2 `map_xberg_error(exc)`
   - Tests use the exact messages observed in the design spike:
     - "Security violation: Document has too many pages…" → `FileTooLarge`
     - "Security violation: Potential ZIP bomb…" → `ParseError`
@@ -171,7 +175,7 @@ pushed task must keep the GitHub Actions CI workflow green.
     - "Parsing error: … Invalid cross-reference table" → `ParseError` with a ≤ 300-char message
     - the cause is chained
   - _Requirements: 2.6, 2.7, 7.3_
-- [ ] 8.3 `extract_file(data, detected, settings) -> RawExtraction`
+- [x] 8.3 `extract_file(data, detected, settings) -> RawExtraction`
   - MD/TXT go through `decode_text`. Everything else goes through
     `xberg.extract(ExtractInput(kind="bytes", mime_type=detected.mime, ...), build_xberg_config(...))`.
     PDFs are pre-checked with `xberg.pdf_page_count`.
@@ -189,7 +193,7 @@ pushed task must keep the GitHub Actions CI workflow green.
     - no writes under `~/.cache/xberg/ocr` (assert via `HOME`/`XDG_CACHE_HOME` pointed at `tmp_path`)
   - _Requirements: 2.1, 2.2, 2.3, 2.6, 2.7, 3.1, 3.2, 3.3, 7.1, 7.3_
 
-- [ ] 9. Sectioning (`src/mcclub_rag/ingest/sections.py`)
+- [x] 9. Sectioning (`src/mcclub_rag/ingest/sections.py`)
   - `split_markdown(text, page=None, inherited_heading=None)` and `build_sections(raw: RawExtraction)`
     with the per-format rules from the design, including XLSX rows as `Header: value · Header: value` lines
     built from `RawPage.tables` cells.
@@ -202,7 +206,7 @@ pushed task must keep the GitHub Actions CI workflow green.
     - whitespace-only sections dropped
   - _Requirements: 2.1, 2.2, 2.3, 2.4, 3.6_
 
-- [ ] 10. SSRF guard (`src/mcclub_rag/ingest/url_guard.py`)
+- [x] 10. SSRF guard (`src/mcclub_rag/ingest/url_guard.py`)
   - `async check_url(url, resolve=default_resolver)`.
   - `tests/test_url_guard.py` with a fake resolver:
     - each of 127.0.0.1, 10.0.0.5, 172.16.0.1, 192.168.1.1, 169.254.169.254, 100.64.0.1, ::1, fc00::1,
@@ -212,8 +216,8 @@ pushed task must keep the GitHub Actions CI workflow green.
     - a public IP → passes
   - _Requirements: 4.5_
 
-- [ ] 11. Web fetching and extraction (`src/mcclub_rag/ingest/web.py`)
-- [ ] 11.1 `fetch(url, settings, client=None, resolve=...) -> FetchedResource`
+- [x] 11. Web fetching and extraction (`src/mcclub_rag/ingest/web.py`)
+- [x] 11.1 `fetch(url, settings, client=None, resolve=...) -> FetchedResource`
   - Manual redirect loop with `check_url` on every hop, streamed size cap, UA header, error mapping per the design.
   - `tests/test_web_fetch.py` (`httpx.MockTransport` + fake resolver):
     - 200 HTML
@@ -226,15 +230,15 @@ pushed task must keep the GitHub Actions CI workflow green.
     - a chunked body over the cap is aborted
     - the UA header is sent
   - _Requirements: 4.1, 4.4, 4.5, 4.7_
-- [ ] 11.2 `extract_html(html_bytes, final_url) -> RawExtraction`
+- [x] 11.2 `extract_html(html_bytes, final_url) -> RawExtraction`
   - trafilatura call and metadata title per the design.
   - Tests with an inline HTML article containing nav, cookie banner and footer:
     - boilerplate is absent; headings and table are kept; title is extracted
     - a page with only nav/footer → `EmptyDocument`
   - _Requirements: 4.2, 4.6_
 
-- [ ] 12. Orchestration (`src/mcclub_rag/ingest/preprocess.py`)
-- [ ] 12.1 `preprocess_file(data, filename, *, visibility, title=None) -> ParsedDocument`
+- [x] 12. Orchestration (`src/mcclub_rag/ingest/preprocess.py`)
+- [x] 12.1 `preprocess_file(data, filename, *, visibility, title=None) -> ParsedDocument`
   - Steps:
     - validate inputs (`InvalidInput`); size check (`FileTooLarge`)
     - `verify_tessdata` once (cached)
@@ -252,7 +256,7 @@ pushed task must keep the GitHub Actions CI workflow green.
     - a log event is captured with `structlog.testing.capture_logs` and contains no document text
     - oversize file → `FileTooLarge` before parsing (assert xberg not called via monkeypatch)
   - _Requirements: 1.1, 1.2, 1.3, 1.4, 2.7, 5.4, 7.3, 7.4, 7.5_
-- [ ] 12.2 `preprocess_url(url, *, visibility, title=None) -> ParsedDocument`
+- [x] 12.2 `preprocess_url(url, *, visibility, title=None) -> ParsedDocument`
   - Routing:
     - HTML → `extract_html`
     - other content types → `detect_type` + `extract_file`, with filename from the URL path and
@@ -265,7 +269,7 @@ pushed task must keep the GitHub Actions CI workflow green.
     - HTML whose ads change but article doesn't → same `content_hash`
     - a URL with `?token=secret` → the token is absent from the captured log
   - _Requirements: 1.1, 1.2, 4.2, 4.3, 7.5_
-- [ ] 12.3 End-to-end and coverage tests
+- [x] 12.3 End-to-end and coverage tests
   - `tests/test_ingest.py` (README-planned name), parametrized over every fixture:
     - `preprocess_file` yields a valid `ParsedDocument` with expected `language` (ar for
       `arabic_cp1256.txt`, fr for `latin1.txt`), `ocr_used` and section count.
