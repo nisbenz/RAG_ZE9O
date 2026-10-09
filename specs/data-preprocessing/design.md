@@ -223,6 +223,17 @@ meta = trafilatura.extract_metadata(html_bytes)  # meta.title (site suffix alrea
 
 `md is None or blank` → `EmptyDocument`. `parser = f"trafilatura {version}"`.
 
+**Update after testing a real docs page** (mcoli-ui.microclub.info): before trafilatura runs,
+`prepare_html` rewrites the parsed tree:
+- unwraps links inside headings and same-page `#` anchors (permalinked `<h2>`s were all dropped);
+- flattens `role="tablist"`/`role="tabpanel"` widgets into "label: content" list items (install
+  commands were lost);
+- inside `<article>`/`<main>` only, rewrites links as "text (absolute url)" (URLs and link-only
+  lists were lost).
+
+`favor_precision=True` is kept, so nav/cookie-only pages are still rejected. The saved page is a
+regression fixture (`tests/fixtures/web/`).
+
 ### `text/normalize.py` (pure, deterministic — Req 5.5)
 
 `normalize_text(s)` applies these steps in order:

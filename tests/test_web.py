@@ -1,9 +1,12 @@
+from pathlib import Path
+
 import httpx
 import pytest
 
 from mcclub_rag.ingest.errors import EmptyDocument, FetchError, UrlNotAllowed
+from mcclub_rag.ingest.preprocess import preprocess_url
 from mcclub_rag.ingest.settings import IngestSettings
-from mcclub_rag.ingest.web import extract_html, fetch
+from mcclub_rag.ingest.web import extract_html, fetch, prepare_html
 
 PUBLIC = {
     "club.example": "93.184.216.34",
@@ -218,3 +221,129 @@ def test_extract_html_keeps_article_drops_boilerplate():
 def test_extract_html_without_main_content_is_empty(page):
     with pytest.raises(EmptyDocument):
         extract_html(page, "https://club.example/empty")
+
+
+# --- prepare_html: patterns trafilatura handles badly ---------------------------
+
+MCOLI_URL = "https://mcoli-ui.microclub.info/docs/introduction"
+MCOLI_HTML = (Path(__file__).parent / "fixtures" / "web" / "mcoli_introduction.html").read_bytes()
+
+
+def _md(html: bytes, url: str = "https://club.example/page") -> str:
+    return extract_html(html, url).markdown
+
+
+def test_mcoli_docs_page_regression():
+    """Real docs page (Next.js + Fumadocs). Before the fix: no h2, no install commands."""
+    raw = extract_html(MCOLI_HTML, MCOLI_URL)
+    md = raw.markdown
+    assert raw.metadata_title and "Introduction" in raw.metadata_title
+    headings = [line for line in md.splitlines() if line.startswith("## ")]
+    assert headings == [
+        "## Own Your Code, Master Your UI",
+        "## Get Started",
+        "## Why mcoli-ui?",
+        "## Contributing",
+        "## Connect With Us",
+    ]
+    for line in [
+        "- npm: npx mcoli-ui@latest init && npx mcoli-ui@latest add mc-button",
+        "- pnpm: pnpm dlx mcoli-ui@latest init && pnpm dlx mcoli-ui@latest add mc-button",
+        "- yarn: yarn dlx mcoli-ui@latest init && yarn dlx mcoli-ui@latest add mc-button",
+        "- bun: bunx mcoli-ui@latest init && bunx mcoli-ui@latest add mc-button",
+        "- GitHub Repository (https://github.com/MicroClub-USTHB/mcoli-ui)",
+        "- Official Website (https://microclub.info)",
+    ]:
+        assert line in md
+    assert "New to mcoli-ui?" in md  # callout
+    assert "Installation (https://mcoli-ui.microclub.info/docs/installation)" in md  # relative link
+    for boilerplate in ["Search docs", "Toggle Color Palette", "On this page", "Theming"]:
+        assert boilerplate not in md
+
+
+async def test_mcoli_docs_page_sections_end_to_end(ocr_settings):
+    async def resolve(host, port):
+        return ["93.184.216.34"]
+
+    def handler(request):
+        return httpx.Response(200, content=MCOLI_HTML, headers={"content-type": "text/html"})
+
+    doc = await preprocess_url(
+        MCOLI_URL,
+        visibility="public",
+        settings=ocr_settings,
+        client=_client(handler),
+        resolve=resolve,
+    )
+    assert [s.heading for s in doc.sections] == [
+        "Introduction",
+        "Own Your Code, Master Your UI",
+        "Get Started",
+        "Why mcoli-ui?",
+        "Contributing",
+        "Connect With Us",
+    ]
+    assert doc.language == "en"
+    get_started = doc.sections[2].text
+    assert "npm: npx mcoli-ui@latest init" in get_started
+
+
+PAGE = b"""<html><head><title>T</title></head><body>
+<nav><a href="/">Home</a> <a href="/about">About the club</a></nav>
+<article>
+<h1><a href="#top">Club guide</a></h1>
+<p>The club meets weekly in room B12 and welcomes every student who wants to learn.</p>
+<h2 id="links"><a href="#links">Useful links</a></h2>
+<p>Read the <a href="/rules">club rules</a>, write to <a href="mailto:office@club.example">the office</a>,
+or open <a href="https://club.example/docs">https://club.example/docs</a> directly.</p>
+<div><div role="tablist"><button role="tab">Linux</button><button role="tab">Windows</button></div>
+<div role="tabpanel">sudo apt install club-tool</div><div role="tabpanel">winget install club-tool</div></div>
+<p>All members can borrow books for two weeks and renew them once at the desk.</p>
+</article></body></html>"""
+
+
+def test_heading_permalinks_unwrapped():
+    md = _md(PAGE)
+    assert "# Club guide" in md
+    assert "## Useful links" in md
+    assert "#links" not in md and "#top" not in md
+
+
+def test_content_links_inlined_with_absolute_urls():
+    md = _md(PAGE)
+    assert "club rules (https://club.example/rules)" in md
+    assert "the office (office@club.example)" in md
+    # label already equal to the URL: not duplicated
+    assert "https://club.example/docs (https://club.example/docs)" not in md
+    assert "https://club.example/docs" in md
+
+
+def test_navigation_links_untouched_and_dropped():
+    md = _md(PAGE)
+    assert "About the club" not in md
+    assert "(https://club.example/about)" not in md
+
+
+def test_tabs_become_labelled_items():
+    md = _md(PAGE)
+    assert "- Linux: sudo apt install club-tool" in md
+    assert "- Windows: winget install club-tool" in md
+
+
+def test_tab_panels_without_labels():
+    html = PAGE.replace(
+        b'<button role="tab">Linux</button><button role="tab">Windows</button>', b""
+    )
+    md = _md(html)
+    assert "- sudo apt install club-tool" in md
+
+
+def test_prepare_html_leaves_plain_pages_alone():
+    plain = b"<html><body><p>Just a paragraph with <b>bold</b> text.</p></body></html>"
+    tree = prepare_html(plain, "https://club.example/")
+    assert tree.text_content() == "Just a paragraph with bold text."
+
+
+def test_prepare_html_unparsable_is_empty():
+    with pytest.raises(EmptyDocument):
+        prepare_html(b"", "https://club.example/")

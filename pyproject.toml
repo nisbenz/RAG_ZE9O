@@ -21,6 +21,7 @@ dependencies = [
     "py3langid~=0.4",
     "structlog>=26.1",
     "charset-normalizer~=3.5",
+    "lxml~=6.1",
 ]
 
 [dependency-groups]

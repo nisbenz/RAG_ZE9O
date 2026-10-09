@@ -19,6 +19,12 @@ dependencies, the DejaVu Sans font and Pillow built with libraqm.
 | `notice.png`, `notice.jpg` | English notice image → OCR |
 | `arabic_notice.png` | synthetic Arabic notice (DejaVu Sans, shaped with libraqm) → Arabic OCR in logical order |
 
+## Web pages (`web/`)
+
+| File | What it exercises |
+|---|---|
+| `web/mcoli_introduction.html` | Real docs page (Next.js + Fumadocs) saved 2026-10-09 from mcoli-ui.microclub.info, slimmed (no scripts, styles, classes). Permalinked headings, tabbed install commands, link-only list, sidebar/TOC boilerplate |
+
 ## Real scans (to be added by hand)
 
 Synthetic images are clean. Real-world quality needs real files. Drop non-sensitive scans here,
