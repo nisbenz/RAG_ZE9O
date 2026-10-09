@@ -5,13 +5,13 @@ real Arabic scans supplied later by nisbenz, and I own the tessdata part of `scr
 Each task is test-first: write the listed tests, see them fail, then implement. From task 1.3 on, every
 pushed task must keep the GitHub Actions CI workflow green.
 
-- [ ] 1. Dependencies and settings
-- [ ] 1.1 Update `pyproject.toml` and lockfile
+- [x] 1. Dependencies and settings
+- [x] 1.1 Update `pyproject.toml` and lockfile
   - Add `charset-normalizer` to `dependencies` (already transitive via trafilatura; made explicit).
   - Add `pillow`, `openpyxl`, `python-docx`, `pypdf` to the `dev` group (fixture generation only).
   - Run `uv lock` and `uv sync`, then confirm `uv run python -c "import xberg, trafilatura, py3langid"` succeeds.
   - _Requirements: 2.4, 7.2_
-- [ ] 1.2 Create `src/mcclub_rag/ingest/settings.py`
+- [x] 1.2 Create `src/mcclub_rag/ingest/settings.py`
   - `IngestSettings(BaseSettings)` with every field and default from design "Data Models", env prefix
     `INGEST_`, `tessdata_prefix` read from `TESSDATA_PREFIX`. Add a cached `get_ingest_settings()`.
   - Append the new variables, with one comment line each, to `.env.example`.
@@ -19,7 +19,7 @@ pushed task must keep the GitHub Actions CI workflow green.
     `TESSDATA_PREFIX` is honoured.
   - _Requirements: 7.6_
 
-- [ ] 1.3 CI test runner `.github/workflows/ci.yml`
+- [x] 1.3 CI test runner `.github/workflows/ci.yml`
   - Triggers: `push` on any branch, and `pull_request` into `main`.
   - Job `test` on `ubuntu-latest`:
     1. `actions/checkout@v4`
