@@ -61,6 +61,9 @@ def build_xberg_config(settings: IngestSettings, timeout_s: int) -> xberg.Extrac
             ),
             tesseract_config=xberg.TesseractConfig(
                 language=languages,
+                # Tesseract's own default (fully automatic). xberg's default silently
+                # dropped the last lines of an Arabic notice; see test_parse.py.
+                psm=3,
                 output_format="text",  # table detection garbles plain notices
                 enable_table_detection=False,
                 use_cache=False,  # otherwise OCR results are cached under ~/.cache/xberg

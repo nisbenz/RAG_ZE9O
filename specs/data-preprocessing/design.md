@@ -47,6 +47,10 @@ Verified in a throw-away venv with real calls, not taken from docs:
 8. A tiny hand-made text PDF (< 64 non-whitespace chars) was OCR'd instead of read natively, because
    xberg's doc-level "near-empty" fallback kicked in. Expected to be a non-issue for real documents, but
    **a test with a realistic text PDF asserts `extraction_method == native`** to catch it if it isn't.
+9. **xberg's default Tesseract page segmentation drops Arabic lines.** On a 4-line Arabic notice it
+   returned only the first 2 lines, while the same traineddata through the `tesseract` CLI read all 4.
+   With `psm=3` (Tesseract's own default, fully automatic) all lines come back in reading order, and
+   English output stays complete. → `TesseractConfig(psm=3)`, with a regression test in `test_parse.py`.
 
 ## Architecture
 
@@ -151,6 +155,7 @@ ExtractionConfig(
         ),
         tesseract_config=TesseractConfig(
             language=["ara", "fra", "eng"],
+            psm=3,  # finding 9
             output_format="text",
             enable_table_detection=False,
             use_cache=False,

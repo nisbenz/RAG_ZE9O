@@ -78,3 +78,4 @@ def test_xberg_config_matches_design(tmp_path):
     assert tess.use_cache is False
     assert tess.enable_table_detection is False
     assert tess.output_format == "text"
+    assert tess.psm == 3
