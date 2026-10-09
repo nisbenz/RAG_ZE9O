@@ -1,0 +1,13 @@
+.git
+.venv
+.env
+__pycache__
+*.py[cod]
+.pytest_cache
+.ruff_cache
+models
+data
+qdrant_storage
+eval/cache
+eval/results
+journals
