@@ -59,11 +59,11 @@ jobs:
       - name: Install dependencies
         run: uv sync --locked
 
-      - name: Tests (without OCR)
+      - name: Tests that run without tessdata
         run: uv run pytest -m "not ocr"
 
   test-ocr:
-    name: OCR tests
+    name: Tests (needs tessdata)
     runs-on: ubuntu-latest
     timeout-minutes: 20
     env:
@@ -92,5 +92,5 @@ jobs:
       - name: Download OCR traineddata (ara, fra, eng; sha256-verified)
         run: uv run python scripts/download_models.py --only tessdata --dest models/tessdata
 
-      - name: OCR tests
+      - name: Tests that need tessdata
         run: uv run pytest -m ocr

@@ -10,6 +10,14 @@ FIXTURES = Path(__file__).resolve().parent / "fixtures"
 OCR_LANGUAGES = ("ara", "fra", "eng")
 
 
+def pytest_collection_modifyitems(items: list[pytest.Item]) -> None:
+    # preprocess_* verifies traineddata before parsing anything, so every test that pulls in
+    # the tessdata fixture needs the models even if it never OCRs; keep -m "not ocr" honest.
+    for item in items:
+        if "tessdata_dir" in getattr(item, "fixturenames", ()):
+            item.add_marker(pytest.mark.ocr)
+
+
 def _tessdata_dir() -> Path:
     env = os.environ.get("TESSDATA_PREFIX")
     return Path(env) if env else REPO / "models" / "tessdata"
