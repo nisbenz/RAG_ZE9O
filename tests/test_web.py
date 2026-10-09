@@ -294,10 +294,12 @@ PAGE = b"""<html><head><title>T</title></head><body>
 <h1><a href="#top">Club guide</a></h1>
 <p>The club meets weekly in room B12 and welcomes every student who wants to learn.</p>
 <h2 id="links"><a href="#links">Useful links</a></h2>
-<p>Read the <a href="/rules">club rules</a>, write to <a href="mailto:office@club.example">the office</a>,
+<p>Read the <a href="/rules">club rules</a>, write to
+<a href="mailto:office@club.example">the office</a>,
 or open <a href="https://club.example/docs">https://club.example/docs</a> directly.</p>
 <div><div role="tablist"><button role="tab">Linux</button><button role="tab">Windows</button></div>
-<div role="tabpanel">sudo apt install club-tool</div><div role="tabpanel">winget install club-tool</div></div>
+<div role="tabpanel">sudo apt install club-tool</div>
+<div role="tabpanel">winget install club-tool</div></div>
 <p>All members can borrow books for two weeks and renew them once at the desk.</p>
 </article></body></html>"""
 
