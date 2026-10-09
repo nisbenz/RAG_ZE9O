@@ -304,11 +304,11 @@ class ParsedDocument(BaseModel, frozen=True):
     visibility: Visibility
     language: str  # "ar" | "fr" | "en" | "mixed" | "und"
     text: str  # normalized, sections joined by blank lines
-    sections: list[Section]
+    sections: tuple[Section, ...]  # tuples: a frozen model with lists is still mutable
     ocr_used: bool
     parser: str  # e.g. "xberg 1.3.6", "trafilatura 2.3.1", "text"
     page_count: int | None
-    warnings: list[str] = []  # non-fatal parser warnings (e.g. "1 OCR line removed")
+    warnings: tuple[str, ...] = ()  # non-fatal parser warnings (e.g. "1 OCR line removed")
     created_at: datetime  # UTC
 ```
 
