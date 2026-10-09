@@ -26,5 +26,5 @@
 
 ### Next
 
-- Push `nisbenz/data-preprocessing`, check CI on GitHub, open PR into `main`.
+- Push `nisbenz/data-preprocessing`, check CI on GitHub, open PR into `dev`.
 - Spec the pipeline: chunking, embedding (granite ONNX), Qdrant hybrid store, `corpus_version()`.
