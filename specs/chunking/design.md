@@ -117,3 +117,147 @@ punctuation-aware boundaries.
   This is the property the coverage test relies on (Req 1.3).
 - `split_words` splits after whitespace runs, also lossless.
 
+### `ingest/chunk.py`: internals
+
+```python
+@dataclass(frozen=True)
+class _OutlineSection:  # one per input Section, in order
+    index: int
+    path: tuple[str, ...]  # full heading path incl. own heading
+    level: int | None  # own heading level, None if it continues/has none
+    heading_line: str | None  # e.g. "## 01", kept for inline use when merged
+    body: str  # section text minus its heading line
+    page: int | None
+    language: str | None
+
+
+@dataclass(frozen=True)
+class _Block:
+    kind: Literal["para", "list", "table", "code"]
+    text: str
+    tokens: int
+
+
+@dataclass
+class _Draft:  # becomes a Chunk in finalize
+    path: tuple[str, ...]
+    parts: list[str]  # joined with "\n\n"
+    sections: list[_OutlineSection]
+```
+
+**Outline (Req 2.2, 2.3, 2.5)**
+
+- Keep a stack of `(level, heading)`. For each section:
+  - If its first line matches `_HEADING` (reuse the regex from `sections.py`), pop entries with
+    `level >= N`, push `(N, heading)`, and use the rest of the text as `body`.
+  - Else if `section.heading` is set, differs from the stack top, and the text has no heading line
+    (the XLSX sheet case), reset the stack to `[(1, sheet_name)]`.
+  - Else (a PDF page continuing a heading, or text before the first heading) inherit the current
+    stack.
+- `path = tuple(h for _, h in stack)`. The document title is not part of `path`. It is added only in
+  the header (Req 5.1).
+
+**Blocks (Req 3.4)**
+
+A line scanner over the body:
+
+- ```` ``` ```` / `~~~` opens a code block until the matching fence.
+- Consecutive lines starting with `|` form a table.
+- Consecutive lines matching `^\s*([-*+•]|\d+[.)])\s` form a list, including indented continuation
+  lines.
+- Everything else, separated by blank lines, forms a paragraph.
+- XLSX bodies (one `Header: value · …` line per row) parse as one paragraph of row lines. Row lines
+  are atomic because the line level comes before the sentence level (Req 2.5).
+
+All block texts are batch-counted once.
+
+**Grouping (Req 2.1, 4)**
+
+Walk the outline sections with a cursor.
+
+- **Heading-only section** (empty body) whose next section is a descendant (its path extends this
+  path): skip it. Its heading lives on in the descendants' `heading_path`.
+- **Small section** (`body_tokens < min_tokens`, heading-only included): open a merge group with
+  `parent = path[:-1]`. Keep adding following sections while all of these hold:
+  - the next section's path starts with `parent` (Req 4.3: never crosses a higher heading),
+  - the group is still under `min_tokens`,
+  - group + next ≤ `target_tokens`.
+
+  Inside the group each section contributes `heading_line + "\n" + body`, so headings stay inline
+  (Req 4.2). The draft path is the longest common prefix of the members' paths.
+
+  If the group is still under `min_tokens` when it closes, try to append it to the previous draft
+  (only if that draft has the same `parent` prefix and stays ≤ budget). Otherwise emit it as is
+  (Req 4.4). A trailing heading-only section is always appended to the previous draft (Req 4.5).
+- **Large section:** `pack(blocks, budget)`.
+
+**Pack (Req 3.1, 3.2, 3.5)**
+
+- Greedily add blocks while `sum + sep ≤ target`, and close the piece when the next block would pass
+  `target` (if the piece is non-empty) or `budget` (always). `sep` is the token count of `"\n\n"`,
+  measured once.
+- A block larger than `budget` is split by `_split_unit(text, level)`. The levels are tried in order
+  `para → line → sentence → word → token`, and each level splits only the pieces that are still too
+  large.
+  - Tables split at row lines, with the header and `|---|` separator rows prepended to every piece
+    (the repeated header is the only allowed duplication; the coverage test exempts it).
+  - Code and list blocks split at line level.
+  - The token level uses `counter.cut`, and each use logs `chunk_hard_split`.
+- **Rebalance:** if the last piece of a section is under `min_tokens` and has a predecessor, and the
+  two together fit `budget`, join them. Otherwise move whole units from the end of the predecessor
+  to the tail until the tail reaches `min_tokens` or the predecessor would drop under it.
+
+**Finalize (Req 1, 3.6, 5, 7)**
+
+- `header = " > ".join(dedupe_consecutive([doc.title, *path]))`. If it is over `max_header_tokens`,
+  drop entries from the left until it fits, then `counter.cut` the remainder.
+- `embed_text = header + "\n\n" + text` (or `text` when `chunk_context_header=False`).
+- Batch-count every `embed_text`. Any draft over `max_tokens` (possible, because the sum of the
+  parts differs from the count of the joined text by a few tokens at junctions) is re-packed with
+  `budget - overshoot` and re-counted. This loops at most 3 times, then `cut` is used.
+  Postcondition: every `token_count ≤ max_tokens`.
+- `page_start` / `page_end` = min / max of the non-`None` member pages. `section_index` = first
+  member index. `language` = the language with the most characters among members, ignoring `und`,
+  falling back to `doc.language` when that is `ar`, `fr` or `en`, otherwise `und`.
+- Log `document_chunked`: `title`, `chunks`, `tokens_min`, `tokens_median`, `tokens_max`, `merged`
+  (sections absorbed by merging), `hard_splits`. Never log text.
+
+## Data Models
+
+```python
+class Chunk(BaseModel):
+    model_config = ConfigDict(frozen=True)
+
+    index: int  # 0-based, contiguous within the document
+    text: str  # faithful content; LLM context + snippets
+    embed_text: str  # header + "\n\n" + text; dense + BM25 input
+    heading_path: tuple[str, ...]  # outermost first; () when no headings
+    page_start: int | None
+    page_end: int | None
+    section_index: int  # index into ParsedDocument.sections
+    language: str  # "ar" | "fr" | "en" | "und"
+    token_count: int  # tokens of embed_text (embedder tokenizer)
+```
+
+Payload mapping (for the pipeline spec, listed here so the fields are known now): `doc_id`, `index`,
+`text`, `heading_path`, `page_start`, `page_end`, `section_index`, `language`, `visibility`, `title`,
+`source`. `embed_text` is not stored, because it can be rebuilt from title + path + text.
+
+**Settings** (`IngestSettings`, `INGEST_` prefix, each documented in `.env.example`):
+
+| Field | Default | Validation |
+|---|---|---|
+| `chunk_target_tokens` | 300 | `> 0` |
+| `chunk_max_tokens` | 400 | `≥ target` |
+| `chunk_min_tokens` | 80 | `< target` |
+| `chunk_max_header_tokens` | 48 | `< max / 4` |
+| `chunk_context_header` | `True` | |
+| `chunk_tokenizer_path` | `$MODELS_DIR/embedder/tokenizer.json` | (existence checked by `verify_tokenizer`) |
+
+The ordering checks run in a `model_validator(mode="after")`, which raises a pydantic
+`ValidationError` at startup.
+
+`chunking_signature(settings, counter) -> str` is the sha256 of the sorted `chunk_*` values plus
+`counter.fingerprint` and a `CHUNKER_VERSION = 1` constant (bumped when the algorithm changes).
+`corpus_version()` (pipeline spec) folds it in (Req 9.2).
+
