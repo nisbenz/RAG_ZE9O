@@ -63,7 +63,7 @@ the golden/perf tests in task 8 need the real `tokenizer.json`.
   - Update the commands in `AGENTS.md` and the `README.md` to match.
   - _Requirements: 6.2_
 
-- [ ] 3. Lossless sentence and word splitting in `src/mcclub_rag/text/sentences.py`
+- [x] 3. Lossless sentence and word splitting in `src/mcclub_rag/text/sentences.py`
   - `split_sentences(text)` and `split_words(text)`, using the rules from design `text/sentences.py`.
     Both are pure, and their pieces keep trailing whitespace.
   - `tests/test_sentences.py`:
