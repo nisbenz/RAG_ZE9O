@@ -9,7 +9,7 @@ sections under one parent are merged. Every chunk's ``embed_text`` carries a
 import itertools
 import re
 from collections.abc import Callable, Iterator, Sequence
-from dataclasses import dataclass
+from dataclasses import dataclass, field
 from typing import Literal
 
 from mcclub_rag.ingest.models import Section
@@ -250,3 +250,111 @@ def _render(units: Sequence[_Unit]) -> str:
         for _, group in itertools.groupby(units, key=lambda u: u.block)
     ]
     return "\n\n".join(g for g in groups if g)
+
+
+Limits = Callable[[tuple[str, ...]], tuple[int, int]]  # heading path -> (target, budget)
+
+
+@dataclass
+class _Part:
+    section: _OutlineSection
+    units: list[_Unit]
+    first: bool  # first piece of its section, so it may carry the heading line inline
+
+
+@dataclass
+class _Draft:
+    path: tuple[str, ...]
+    parts: list[_Part] = field(default_factory=list)
+
+
+def _common_prefix(paths: Sequence[tuple[str, ...]]) -> tuple[str, ...]:
+    prefix = paths[0]
+    for path in paths[1:]:
+        n = 0
+        while n < min(len(prefix), len(path)) and prefix[n] == path[n]:
+            n += 1
+        prefix = prefix[:n]
+    return prefix
+
+
+def _inline_heading(part: _Part, path: tuple[str, ...]) -> str | None:
+    """The heading line to keep in the text: when it is not already in the chunk's path."""
+    section = part.section
+    if part.first and section.heading_line and section.path != path[: len(section.path)]:
+        return section.heading_line
+    return None
+
+
+def _draft_text(draft: _Draft) -> str:
+    texts = []
+    for part in draft.parts:
+        body = _render(part.units)
+        if heading := _inline_heading(part, draft.path):
+            body = f"{heading}\n{body}" if body else heading
+        if body:
+            texts.append(body)
+    return "\n\n".join(texts)
+
+
+def _group(
+    outline: Sequence[_OutlineSection], counter: TokenCounter, limits: Limits, min_tokens: int
+) -> list[_Draft]:
+    """Large sections are packed alone; runs of small sections under one parent are merged."""
+    sep = counter.count("\n\n")
+    ids = itertools.count()
+    units = [_units(_parse_blocks(s.body, counter), *limits(s.path), counter, ids) for s in outline]
+    heading_tokens = counter.count_many([s.heading_line or "" for s in outline])
+    sizes = [_size(u, sep) for u in units]
+    inline = [size + heading for size, heading in zip(sizes, heading_tokens, strict=True)]
+
+    def estimate(draft: _Draft) -> int:
+        return sum(inline[p.section.index] + sep for p in draft.parts)
+
+    drafts: list[_Draft] = []
+    i = 0
+    while i < len(outline):
+        section = outline[i]
+        nxt = outline[i + 1] if i + 1 < len(outline) else None
+        if not units[i] and nxt and nxt.path[: len(section.path)] == section.path != nxt.path:
+            i += 1  # heading-only: it lives on in the descendants' heading path
+            continue
+        if sizes[i] >= min_tokens:
+            pieces = _pack(units[i], *limits(section.path), min_tokens, sep)
+            drafts.extend(
+                _Draft(section.path, [_Part(section, piece, k == 0)])
+                for k, piece in enumerate(pieces)
+            )
+            i += 1
+            continue
+        parent = section.path[:-1] if section.heading_line else section.path
+        group, total, j = [i], inline[i], i + 1
+        # Keep absorbing small siblings up to the target; a large one only while still small.
+        while j < len(outline) and (total < min_tokens or sizes[j] < min_tokens):
+            if outline[j].path[: len(parent)] != parent:
+                break  # never cross a higher-level heading
+            if total + sep + inline[j] > limits(parent)[0]:
+                break
+            group.append(j)
+            total += sep + inline[j]
+            j += 1
+        draft = _Draft(
+            _common_prefix([outline[k].path for k in group]),
+            [_Part(outline[k], units[k], True) for k in group],
+        )
+        prev = drafts[-1] if drafts else None
+        trailing_headings = j == len(outline) and not any(units[k] for k in group)
+        if (
+            total < min_tokens
+            and prev is not None
+            and (trailing_headings or prev.path[: len(parent)] == parent)
+        ):
+            path = _common_prefix([prev.path, draft.path])
+            if estimate(prev) + sep + total <= limits(path)[1]:
+                prev.path = path
+                prev.parts.extend(draft.parts)
+                i = j
+                continue
+        drafts.append(draft)
+        i = j
+    return drafts

@@ -118,7 +118,7 @@ the golden/perf tests in task 8 need the real `tokenizer.json`.
     - The long Arabic H2 sample splits at paragraph boundaries.
   - _Requirements: 3.1, 3.2, 3.6_
 
-- [ ] 6. Grouping: merging small sections in `chunk.py` (`_group(outline, ...) -> list[_Draft]`)
+- [x] 6. Grouping: merging small sections in `chunk.py` (`_group(outline, ...) -> list[_Draft]`)
   - Rules from design "Grouping":
     - A heading-only section whose next section is a descendant is absorbed into the path.
     - Small runs merge under the same parent while `< min` and `≤ target`, with headings kept

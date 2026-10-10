@@ -117,8 +117,10 @@ useful chunks, so that answers don't come from 5-character fragments like `## 01
 #### Acceptance Criteria
 
 1. WHEN a section's body is smaller than `min_tokens` THEN the system SHALL merge it with the
-   following sibling or descendant sections (same parent heading) until the merged chunk reaches
-   `min_tokens` or the next section would push it over `target_tokens`.
+   following sibling or descendant sections (same parent heading) while the next section would
+   not push it over `target_tokens`. A following section that is itself at least `min_tokens`
+   SHALL join only while the merged chunk is still under `min_tokens`, so that runs of tiny
+   sections become one chunk instead of several minimum-sized ones.
 2. WHEN sections are merged THEN their heading lines SHALL stay inline in `text` (for example
    `## 01` followed by its body) so the structure stays readable. The chunk's `heading_path` SHALL
    be the common parent path of the merged sections.

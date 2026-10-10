@@ -1,6 +1,16 @@
 import itertools
 
-from mcclub_rag.ingest.chunk import _outline, _pack, _parse_blocks, _render, _size, _Unit, _units
+from mcclub_rag.ingest.chunk import (
+    _draft_text,
+    _group,
+    _outline,
+    _pack,
+    _parse_blocks,
+    _render,
+    _size,
+    _Unit,
+    _units,
+)
 from mcclub_rag.ingest.models import Section
 from tests.chunk_helpers import FakeCounter, md, words
 
@@ -177,3 +187,54 @@ class TestPack:
         pieces = [_render(p) for p in _pack(_units_of(body), 30, 40, 5, 0)]
         assert all(p.count(paragraph) >= 1 for p in pieces)
         assert "".join(pieces).replace("\n", "") == body.replace("\n", "")
+
+
+def _drafts(*texts, min_tokens=8):
+    outline = _outline(md(*texts))
+    return _group(outline, COUNTER, lambda path: (30, 40), min_tokens)
+
+
+class TestGroup:
+    def test_slide_deck_fragments_are_merged(self):
+        drafts = _drafts(
+            "# Vice President\nBouras Mohammed Reda",
+            "## Contents",
+            "## 01\nIntroduction: Building the Foundation 03",
+            "## 02\nAbout Me & My Story 04",
+            "## 03\nThe Diagnosis 05",
+            "## 04\nThe Core Vision 06",
+            "## 05\nWhy Me? 08",
+            "## 06\nIf I Am Not Elected 08",
+            "## 07",
+            "## Conclusion\n09",
+        )
+        assert len(drafts) <= 2
+        text = _draft_text(drafts[0])
+        assert "## 01\nIntroduction: Building the Foundation 03" in text
+        assert drafts[0].path == ("Vice President",)
+
+    def test_merging_never_crosses_a_higher_heading(self):
+        drafts = _drafts("# A", "## a1\nx y", "# B", "## b1\nz")
+        assert len(drafts) == 2
+        assert [d.path for d in drafts] == [("A", "a1"), ("B", "b1")]
+
+    def test_heading_only_parent_moves_into_the_path(self):
+        drafts = _drafts(f"# A\n{words(20)}", "## B", f"### C\n{words(20)}")
+        assert [d.path for d in drafts] == [("A",), ("A", "B", "C")]
+        assert all("## B" not in _draft_text(d) for d in drafts)
+
+    def test_trailing_heading_only_section_joins_the_last_chunk(self):
+        drafts = _drafts(f"# A\n{words(20)}", "## End")
+        assert len(drafts) == 1
+        assert _draft_text(drafts[0]).endswith("## End")
+
+    def test_large_sections_are_not_merged(self):
+        drafts = _drafts(f"## A\n{words(20)}", f"## B\n{words(20)}")
+        assert [d.path for d in drafts] == [("A",), ("B",)]
+        assert all(not _draft_text(d).startswith("##") for d in drafts)
+
+    def test_small_section_after_a_large_sibling_joins_it(self):
+        drafts = _drafts("# T", f"## A\n{words(20)}", "## B\nshort tail")
+        assert len(drafts) == 1
+        assert drafts[0].path == ("T",)
+        assert _draft_text(drafts[0]).endswith("## B\nshort tail")

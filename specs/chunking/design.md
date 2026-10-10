@@ -180,7 +180,8 @@ Walk the outline sections with a cursor.
 - **Small section** (`body_tokens < min_tokens`, heading-only included): open a merge group with
   `parent = path[:-1]`. Keep adding following sections while all of these hold:
   - the next section's path starts with `parent` (Req 4.3: never crosses a higher heading),
-  - the group is still under `min_tokens`,
+  - the next section is itself small, or the group is still under `min_tokens` (so runs of tiny
+    slide sections become one chunk, not several minimum-sized ones),
   - group + next ≤ `target_tokens`.
 
   Inside the group each section contributes `heading_line + "\n" + body`, so headings stay inline
