@@ -27,7 +27,7 @@ the golden/perf tests in task 8 need the real `tokenizer.json`.
   - _Requirements: 1.1, 1.5, 7.1_
 
 - [ ] 2. Token counting
-- [ ] 2.1 Pinned tokenizer download in `scripts/download_models.py`
+- [x] 2.1 Pinned tokenizer download in `scripts/download_models.py`
   - `download_tokenizer(dest)`: fetch `tokenizer.json` from
     `ibm-granite/granite-embedding-311m-multilingual-r2` at revision
     `44399559930365213510b1ee2eb15ded83374f0e`, verify sha256

@@ -102,8 +102,9 @@ def test_cli_default_dest_uses_models_dir(monkeypatch, tmp_path):
     calls = []
     monkeypatch.setenv("MODELS_DIR", str(tmp_path))
     monkeypatch.setattr(dm, "download_tessdata", lambda dest, variant: calls.append(dest))
+    monkeypatch.setattr(dm, "download_tokenizer", lambda dest: calls.append(dest))
     assert dm.main([]) == 0
-    assert calls == [tmp_path / "tessdata"]
+    assert calls == [tmp_path / "tessdata", tmp_path / "embedder"]
 
 
 def test_cli_reports_failure(monkeypatch, capsys):
@@ -111,5 +112,63 @@ def test_cli_reports_failure(monkeypatch, capsys):
         raise dm.DownloadError("sha256 mismatch for ara")
 
     monkeypatch.setattr(dm, "download_tessdata", boom)
-    assert dm.main(["--dest", "/nonexistent"]) == 1
+    assert dm.main(["--only", "tessdata", "--dest", "/nonexistent"]) == 1
     assert "sha256 mismatch" in capsys.readouterr().err
+
+
+TOKENIZER = b'{"model": "fake tokenizer"}' * 50
+TOKENIZER_HASH = hashlib.sha256(TOKENIZER).hexdigest()
+
+
+def test_tokenizer_downloaded_from_pinned_revision(tmp_path):
+    seen = []
+
+    def handler(request):
+        seen.append(str(request.url))
+        return httpx.Response(200, content=TOKENIZER)
+
+    path = dm.download_tokenizer(tmp_path, client=_client(handler), sha256=TOKENIZER_HASH)
+    assert path == tmp_path / "tokenizer.json"
+    assert path.read_bytes() == TOKENIZER
+    assert seen == [
+        "https://huggingface.co/ibm-granite/granite-embedding-311m-multilingual-r2"
+        f"/resolve/{dm.EMBEDDER_REVISION}/tokenizer.json"
+    ]
+    assert not list(tmp_path.glob("*.part"))
+
+
+def test_tokenizer_hash_mismatch_leaves_no_file(tmp_path):
+    def handler(request):
+        return httpx.Response(200, content=b"tampered")
+
+    with pytest.raises(dm.DownloadError, match="sha256 mismatch for tokenizer.json"):
+        dm.download_tokenizer(tmp_path, client=_client(handler), sha256=TOKENIZER_HASH)
+    assert list(tmp_path.iterdir()) == []
+
+
+def test_existing_valid_tokenizer_is_not_downloaded_again(tmp_path):
+    (tmp_path / "tokenizer.json").write_bytes(TOKENIZER)
+
+    def handler(request):
+        raise AssertionError(f"unexpected download of {request.url}")
+
+    dm.download_tokenizer(tmp_path, client=_client(handler), sha256=TOKENIZER_HASH)
+
+
+def test_tokenizer_pin_is_the_audited_hash():
+    assert dm.TOKENIZER_SHA256 == (
+        "0087c868b33bad550a78a08d19798cfd7f713cde4f020803b8f51f405503e15f"
+    )
+
+
+def test_cli_only_tokenizer(monkeypatch, tmp_path):
+    calls = []
+    monkeypatch.setattr(dm, "download_tessdata", lambda dest, variant: calls.append("tessdata"))
+    monkeypatch.setattr(dm, "download_tokenizer", lambda dest: calls.append(dest))
+    assert dm.main(["--only", "tokenizer", "--dest", str(tmp_path)]) == 0
+    assert calls == [tmp_path]
+
+
+def test_cli_dest_with_several_groups_is_rejected(tmp_path):
+    with pytest.raises(SystemExit):
+        dm.main(["--dest", str(tmp_path)])
