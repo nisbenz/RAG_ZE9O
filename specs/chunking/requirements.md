@@ -109,3 +109,111 @@ gets silently truncated by the embedder or the reranker.
    warning with the document title and chunk index, but not the text.
 6. Every produced chunk SHALL satisfy `token_count <= max_tokens`.
 
+### Requirement 4: Merging small sections
+
+**User Story:** As a club member, I want slide-style PDFs and short web sections to still produce
+useful chunks, so that answers don't come from 5-character fragments like `## 01`.
+
+#### Acceptance Criteria
+
+1. WHEN a section's body is smaller than `min_tokens` THEN the system SHALL merge it with the
+   following sibling or descendant sections (same parent heading) until the merged chunk reaches
+   `min_tokens` or the next section would push it over `target_tokens`.
+2. WHEN sections are merged THEN their heading lines SHALL stay inline in `text` (for example
+   `## 01` followed by its body) so the structure stays readable. The chunk's `heading_path` SHALL
+   be the common parent path of the merged sections.
+3. The system SHALL NOT merge across a boundary of a higher level than the merged sections'
+   parent (for example two `##` sections under different `#` headings).
+4. IF a small section has no following sibling to merge with THEN the system SHALL merge it into the
+   previous chunk when that chunk stays within `max_tokens`. Otherwise it SHALL emit it as its own
+   (small) chunk.
+5. WHEN a section's text is only a heading (no body) THEN the system SHALL NOT emit it as its own
+   chunk. IF the next section is its descendant THEN its heading SHALL live on only in the
+   descendants' `heading_path`. Otherwise it SHALL be merged forward per 4.1. A trailing
+   heading-only section at the end of the document SHALL be appended to the previous chunk.
+
+### Requirement 5: Contextual header for retrieval
+
+**User Story:** As the retriever, I want each chunk to say where it comes from, so that a chunk like
+"the deadline is Friday" can be matched to a question about the hackathon registration.
+
+#### Acceptance Criteria
+
+1. WHEN a chunk is built THEN `embed_text` SHALL be a short header followed by a blank line and then
+   `text`. The header holds the document title and the heading path joined by ` > `, with
+   consecutive duplicate entries removed (for example a title equal to the H1).
+2. WHEN `context_header` is disabled in settings THEN `embed_text` SHALL equal `text`, so it can be
+   A/B tested.
+3. The header SHALL count toward `token_count` and `max_tokens`. IF the header alone exceeds
+   `max_header_tokens` THEN the system SHALL truncate it from the left, keeping the innermost
+   headings.
+4. `text` SHALL NOT contain the header (the LLM prompt and snippets show title and section
+   separately from the payload).
+
+### Requirement 6: Token counting
+
+**User Story:** As the developer, I want chunk sizes measured in the real model's tokens and not in
+characters, so that Arabic (which tokenizes differently from French and English) isn't over- or
+under-chunked.
+
+#### Acceptance Criteria
+
+1. The system SHALL count tokens with the embedder's tokenizer (`tokenizer.json` of `EMBED_MODEL`,
+   loaded with `tokenizers`, offline, no special tokens), loaded once and reused.
+2. IF the tokenizer file is missing at startup THEN the system SHALL fail fast with an instruction
+   naming the expected path (the same pattern as `verify_tessdata()`).
+3. Default sizes SHALL be `target_tokens=300`, `max_tokens=400`, `min_tokens=80`,
+   `max_header_tokens=48`. These were measured, not guessed: on code-heavy text the reranker's
+   tokenizer produces up to 1.28× more tokens than granite's, so a 400-token chunk plus the query
+   fits a reranker `max_length` of 640 (see design). All of them SHALL be configurable through
+   `INGEST_CHUNK_*` settings, which are validated: `min < target <= max`.
+4. The tokenizer SHALL ignore any truncation or padding configured inside `tokenizer.json`
+   (granite's ships with truncation at 32,768 tokens and padding enabled).
+
+### Requirement 7: Neighbor links and metadata for retrieval
+
+**User Story:** As the retrieval stage, I want to know each chunk's neighbors and section, so that I
+can expand a hit to the surrounding text (small-to-big) without overlap in the index.
+
+#### Acceptance Criteria
+
+1. WHEN chunks are produced THEN each chunk SHALL carry `section_index` (index of the first source
+   section) so the pipeline can store it and retrieval can fetch `index ± 1` chunks of the same
+   document or the same section.
+2. WHEN a chunk's sections have different `language` tags THEN the chunk `language` SHALL be the
+   language covering the most characters, falling back to the document language when all are
+   `und`.
+
+### Requirement 8: Observability and performance
+
+**User Story:** As an operator, I want to see what chunking did without leaking document content.
+
+#### Acceptance Criteria
+
+1. WHEN a document is chunked THEN the system SHALL log one `document_chunked` event with the chunk
+   count, min, median and max `token_count`, and the counts of merges and hard splits. It SHALL NOT
+   log any text.
+2. WHEN a 300-page text PDF is chunked on CPU THEN chunking SHALL take under 2 s. Tokenization is
+   the cost, so the system SHALL batch-encode units and not re-tokenize already-measured text
+   repeatedly.
+
+### Requirement 9: Evaluable configuration
+
+**User Story:** As the team, I want to compare chunking variants on `eval/questions.jsonl`, so that
+the defaults are backed by our corpus and not only by external benchmarks.
+
+#### Acceptance Criteria
+
+1. WHEN the chunking settings change THEN the produced chunks SHALL change only through those
+   settings (no hidden constants), so that `target_tokens` ∈ {200, 300, 400} and `context_header`
+   on/off can be evaluated with hit@5 and MRR, including the Arabic subset.
+2. The chunking settings SHALL be part of the corpus version (`corpus_version()` in the pipeline
+   spec), so that changing them invalidates the answer cache and triggers a reindex.
+
+## Open questions
+
+- Should a document title that differs from the H1 appear in the header twice (title > H1 > H2), or
+  only the path? The current draft keeps both and removes them only when they are equal.
+- Should repeated boilerplate sections (the BBC homepage "follow us" or "app" blocks) be dropped
+  here or in preprocessing? The draft leaves them to preprocessing and chunks them like any
+  section.
