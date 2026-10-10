@@ -171,7 +171,7 @@ the golden/perf tests in task 8 need the real `tokenizer.json`.
     in any event.
   - _Requirements: 1.2, 1.3, 1.4, 8.1_
 
-- [ ] 8. Corpus-version hook and real-tokenizer checks
+- [x] 8. Corpus-version hook and real-tokenizer checks
 - [x] 8.1 `chunking_signature(settings, counter) -> str` in `ingest/settings.py` (or `chunk.py`), with
   `CHUNKER_VERSION = 1`
   - sha256 over the sorted `chunk_*` values (excluding the path), `counter.fingerprint` and the
@@ -180,7 +180,7 @@ the golden/perf tests in task 8 need the real `tokenizer.json`.
     fingerprint, or `CHUNKER_VERSION` changes; it does not change when only the tokenizer path
     changes.
   - _Requirements: 9.1, 9.2_
-- [ ] 8.2 Golden and performance tests with the real tokenizer (`tokenizer` marker)
+- [x] 8.2 Golden and performance tests with the real tokenizer (`tokenizer` marker)
   - Extend `tests/fixtures/make_fixtures.py` to write
     `tests/fixtures/chunking/mcoli_introduction.json`: the list of
     `(heading_path, page_start, token_count)` from preprocessing `web/mcoli_introduction.html`

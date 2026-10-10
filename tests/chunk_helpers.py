@@ -2,9 +2,17 @@
 
 from collections.abc import Sequence
 from datetime import UTC, datetime
+from pathlib import Path
 
+import httpx
+
+from mcclub_rag.ingest.chunk import chunk_document
 from mcclub_rag.ingest.models import ParsedDocument, Section
+from mcclub_rag.ingest.preprocess import preprocess_url
+from mcclub_rag.ingest.settings import IngestSettings
 from mcclub_rag.text.sentences import split_words
+
+FIXTURES = Path(__file__).resolve().parent / "fixtures"
 
 
 class FakeCounter:
@@ -61,3 +69,28 @@ def md(*texts: str, page: int | None = None, language: str | None = "fr") -> tup
         heading = first.lstrip("#").strip() if first.startswith("#") else None
         out.append(Section(text=text, heading=heading, page=page, language=language))
     return tuple(out)
+
+
+MCOLI_GOLDEN = FIXTURES / "chunking" / "mcoli_introduction.json"
+
+
+async def mcoli_chunk_summary(settings: IngestSettings) -> list[list]:
+    """Preprocess the committed mcoli docs page (mocked fetch) and summarize its chunks."""
+    html = (FIXTURES / "web" / "mcoli_introduction.html").read_bytes()
+
+    def handler(request: httpx.Request) -> httpx.Response:
+        return httpx.Response(200, content=html, headers={"content-type": "text/html"})
+
+    async def resolve(host: str, port: int) -> list[str]:
+        return ["93.184.216.34"]
+
+    async with httpx.AsyncClient(transport=httpx.MockTransport(handler)) as client:
+        document = await preprocess_url(
+            "https://mcoli-ui.microclub.info/docs/introduction",
+            visibility="public",
+            settings=settings,
+            client=client,
+            resolve=resolve,
+        )
+    chunks = chunk_document(document, settings=settings)
+    return [[list(c.heading_path), c.page_start, c.token_count] for c in chunks]
