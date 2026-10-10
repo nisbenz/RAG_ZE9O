@@ -1,6 +1,8 @@
-from mcclub_rag.ingest.chunk import _outline
+from mcclub_rag.ingest.chunk import _outline, _parse_blocks
 from mcclub_rag.ingest.models import Section
-from tests.chunk_helpers import md
+from tests.chunk_helpers import FakeCounter, md
+
+COUNTER = FakeCounter()
 
 
 class TestOutline:
@@ -47,3 +49,43 @@ class TestOutline:
         outline = _outline(md("## Contents"))
         assert outline[0].body == ""
         assert outline[0].index == 0
+
+
+class TestBlocks:
+    def kinds(self, body):
+        return [b.kind for b in _parse_blocks(body, COUNTER)]
+
+    def test_each_kind(self):
+        body = (
+            "Intro paragraph\nstill intro.\n\n"
+            "- one\n- two\n  continued\n\n"
+            "| a | b |\n|---|---|\n| 1 | 2 |\n\n"
+            "```python\nx = 1\n\ny = 2\n```\n\n"
+            "Closing."
+        )
+        assert self.kinds(body) == ["para", "list", "table", "code", "para"]
+
+    def test_code_fence_keeps_blank_lines(self):
+        blocks = _parse_blocks("```\na\n\nb\n```", COUNTER)
+        assert len(blocks) == 1
+        assert blocks[0].text == "```\na\n\nb\n```"
+
+    def test_unclosed_fence_runs_to_end(self):
+        blocks = _parse_blocks("text\n\n```\ncode\n\nmore code", COUNTER)
+        assert [b.kind for b in blocks] == ["para", "code"]
+        assert blocks[1].text.endswith("more code")
+
+    def test_numbered_list(self):
+        assert self.kinds("1. first\n2) second") == ["list"]
+
+    def test_xlsx_rows_are_one_paragraph(self):
+        assert self.kinds("Nom: Ali · Rôle: HR\nNom: Sara · Rôle: OPS") == ["para"]
+
+    def test_token_counts(self):
+        blocks = _parse_blocks("un deux trois\n\nquatre", COUNTER)
+        assert [b.tokens for b in blocks] == [3, 1]
+
+    def test_lossless_ignoring_whitespace(self):
+        body = "a b\n\n- c\n- d\n\n| e |\n|---|\n\n```\nf\n```\n\n\ng"
+        joined = "".join(b.text for b in _parse_blocks(body, COUNTER))
+        assert "".join(joined.split()) == "".join(body.split())

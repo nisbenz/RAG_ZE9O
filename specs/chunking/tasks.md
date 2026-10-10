@@ -75,7 +75,7 @@ the golden/perf tests in task 8 need the real `tokenizer.json`.
     - Lossless join over parametrized samples and every `tests/fixtures/*.md`/`*.txt`.
   - _Requirements: 3.3, 1.3_
 
-- [ ] 4. Outline and blocks in `src/mcclub_rag/ingest/chunk.py` (private helpers)
+- [x] 4. Outline and blocks in `src/mcclub_rag/ingest/chunk.py` (private helpers)
 - [x] 4.1 `_outline(sections) -> list[_OutlineSection]`
   - A heading stack reusing `sections._HEADING`; XLSX sheet reset; PDF continuation inherits; the
     heading line is removed from `body` and kept in `heading_line`.
@@ -86,7 +86,7 @@ the golden/perf tests in task 8 need the real `tokenizer.json`.
     - Text before the first heading has path `()`.
     - A `### x` with no H2 parent gets path `(H1, x)`.
   - _Requirements: 2.2, 2.3, 2.5_
-- [ ] 4.2 `_parse_blocks(body, counter) -> list[_Block]`
+- [x] 4.2 `_parse_blocks(body, counter) -> list[_Block]`
   - Line scanner for code fences (including an unclosed fence), tables, lists with continuation
     lines, and blank-line paragraphs. One `count_many` call per section.
   - `TestBlocks`:
