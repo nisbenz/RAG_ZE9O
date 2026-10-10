@@ -261,3 +261,89 @@ The ordering checks run in a `model_validator(mode="after")`, which raises a pyd
 `counter.fingerprint` and a `CHUNKER_VERSION = 1` constant (bumped when the algorithm changes).
 `corpus_version()` (pipeline spec) folds it in (Req 9.2).
 
+## Error Handling
+
+| Situation | Behaviour |
+|---|---|
+| `tokenizer.json` missing or corrupt | `verify_tokenizer` raises `TokenizerConfigError` (code `tokenizer_config_error`) at startup. Also raised lazily by `get_token_counter` if startup was skipped. Not mapped to HTTP, same as `ocr_config_error`. |
+| Invalid chunk settings | pydantic `ValidationError` at settings load: the process fails to start. |
+| Document with no usable content | Returns `()`. The pipeline maps that to `EmptyDocument` (already 422), so the chunker never raises for content. |
+| Unclosed code fence | The block runs to the end of the section (same as CommonMark), then splits at line level if too large. |
+| A single "word" over budget (a long URL, base64, Arabic with no spaces) | Token-level `cut` plus a `chunk_hard_split` warning. |
+| Re-pack loop doesn't converge in 3 rounds | Final `cut` to `max_tokens`, so the postcondition always holds. Covered by a test with an adversarial counter. |
+| Any other exception | Not caught: a bug, not an input error. No bare `except Exception` (repo rule). |
+
+## Testing Strategy
+
+**Unit tests with a fake counter** (`tests/test_chunk.py`, `tests/test_sentences.py`, no model
+files, run in the `not ocr` job): `FakeCounter` counts 1 token per whitespace-separated word, and
+`cut` splits at words. This makes size assertions exact and readable.
+
+- Sentences (`test_sentences.py`):
+  - Arabic `؟ ؛ ۔`, French and English cases.
+  - Non-boundaries: `3.5`, `e.g.`, `M. Dupont`, `v1.2`, `example.com`.
+  - Closing quotes and `»`.
+  - Lossless join, checked over every fixture text.
+- Outline: H1 > H2 > H3 paths; an H2 after an H3 pops correctly; PDF continuation inherits; XLSX
+  sheet path; text before the first heading has path `()`.
+- Blocks: a table and a code fence are never cut when they fit; an oversized table repeats its
+  header in every piece; list continuation lines stay with the list.
+- Merging:
+  - A slide-style document (`## 01` … `## 07`, tiny bodies) produces at most 2 chunks, with headings
+    inline.
+  - Merging never crosses an H1 boundary.
+  - A heading-only section followed by a child disappears into the path.
+  - A trailing heading-only section is appended to the previous chunk.
+- Splitting: a long Arabic H2 section splits at paragraphs; a single 1,000-word paragraph splits at
+  sentences; a 600-token "word" hard-splits and logs `chunk_hard_split`.
+- Invariants, parametrized over every test document:
+  - `index` is contiguous.
+  - `token_count ≤ max`.
+  - Lossless coverage (1.3): the concatenated chunk texts equal the sections' bodies plus kept
+    heading lines, after whitespace collapse and removal of repeated table headers.
+  - Determinism: chunking twice gives equal tuples.
+- Header: title = H1 dedupe; left truncation keeps the innermost headings; `context_header=False`
+  gives `embed_text == text`.
+- Settings: `min ≥ target` is rejected; `chunking_signature` changes when any `chunk_*` field
+  changes.
+- Logging (`structlog.testing.capture_logs`): one `document_chunked` event with the expected keys
+  and no text.
+
+**Real tokenizer tests** (new `tokenizer` marker, registered in `pyproject.toml`; they fail with the
+download instruction when the file is missing, like `ocr`):
+
+- `HFTokenCounter` ignores the embedded truncation and padding (a 40k-token text counts above
+  32,768).
+- `cut` is lossless.
+- Golden test: `tests/fixtures/web/mcoli_introduction.html` → `preprocess_url` (mocked fetch,
+  existing helper) → `chunk_document`, compared against a committed summary
+  `[(heading_path, page_start, token_count)]` in `tests/fixtures/chunking/mcoli_introduction.json`.
+  It is regenerated only by `make_fixtures.py`.
+- Performance: a synthetic 300-section mixed-language document (generated in the test) chunks in
+  under 2 s (Req 8.2).
+
+**CI:** the existing OCR job already downloads models. It also runs
+`download_models.py --only tokenizer` (cached by sha256) and `pytest -m "ocr or tokenizer"`. The
+fast job runs `-m "not ocr and not tokenizer"`.
+
+**Evaluation (Req 9, outside pytest):** `eval/run_eval.py` (pipeline/eval spec) runs the variants
+target ∈ {200, 300, 400} × header on/off, reporting hit@5 and MRR plus the Arabic subset, with
+results in `eval/results/`. The chunker only has to make these variants reachable through
+settings.
+
+## Traceability
+
+| Req | Where |
+|---|---|
+| 1.1, 1.5 | `Chunk` model; no ids |
+| 1.2 | Pure function; determinism test |
+| 1.3 | Lossless `split_sentences`/`cut`, coverage invariant test |
+| 1.4 | Empty-tuple return; pipeline maps to `EmptyDocument` |
+| 2.1 to 2.5 | Outline pass, grouping |
+| 3.1 to 3.6 | Blocks, pack, `_split_unit`, finalize re-pack |
+| 4.1 to 4.5 | Grouping (merge groups, heading-only rules) |
+| 5.1 to 5.4 | Finalize header; `context_header` setting |
+| 6.1 to 6.3 | `ingest/tokens.py`, settings validation, pinned download |
+| 7.1, 7.2 | `section_index`, language vote |
+| 8.1, 8.2 | `document_chunked` log; batch counting; perf test |
+| 9.1, 9.2 | `chunk_*` settings only; `chunking_signature` |
