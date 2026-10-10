@@ -35,8 +35,9 @@ Two people, each owning a slice. Do not edit the other's files or journal withou
 - **Test-first** per task; tick the task in `tasks.md` when done.
 - Branches: work on feature branches (e.g. `nisbenz/data-preprocessing`) into `dev`; `dev` into `main`.
   Conventional commits (`feat:`, `fix:`, `docs:`, `chore:`).
-- CI (GitHub Actions) must stay green: `uv lock --check`, ruff check + format check, `pytest -m "not ocr"`,
-  and an OCR job that downloads sha256-verified tessdata then runs `pytest -m ocr`.
+- CI (GitHub Actions) must stay green: `uv lock --check`, ruff check + format check,
+  `pytest -m "not ocr and not tokenizer"`, and a models job that downloads sha256-verified tessdata
+  and the embedder `tokenizer.json`, then runs `pytest -m "ocr or tokenizer"`.
 - Before starting: `git fetch`; local `dev` may be behind `origin/dev`.
 
 ## Fixed decisions (do not change; ask the user if blocked)
@@ -72,9 +73,10 @@ Two people, each owning a slice. Do not edit the other's files or journal withou
 ```bash
 uv sync --locked
 uv run ruff check . && uv run ruff format --check .
-uv run pytest -m "not ocr"        # no tessdata needed
+uv run pytest -m "not ocr and not tokenizer"   # no model files needed
 uv run python scripts/download_models.py --only tessdata --dest models/tessdata
-TESSDATA_PREFIX=$PWD/models/tessdata uv run pytest -m ocr
+uv run python scripts/download_models.py --only tokenizer --dest models/embedder
+TESSDATA_PREFIX=$PWD/models/tessdata uv run pytest -m "ocr or tokenizer"
 cp .env.example .env && docker compose up -d --build
 ```
 

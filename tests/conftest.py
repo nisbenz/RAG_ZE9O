@@ -13,9 +13,13 @@ OCR_LANGUAGES = ("ara", "fra", "eng")
 def pytest_collection_modifyitems(items: list[pytest.Item]) -> None:
     # preprocess_* verifies traineddata before parsing anything, so every test that pulls in
     # the tessdata fixture needs the models even if it never OCRs; keep -m "not ocr" honest.
+    # Same for the embedder tokenizer: keep -m "not tokenizer" free of the 33 MB download.
     for item in items:
-        if "tessdata_dir" in getattr(item, "fixturenames", ()):
+        fixtures = getattr(item, "fixturenames", ())
+        if "tessdata_dir" in fixtures:
             item.add_marker(pytest.mark.ocr)
+        if "tokenizer_path" in fixtures:
+            item.add_marker(pytest.mark.tokenizer)
 
 
 def _tessdata_dir() -> Path:
@@ -35,6 +39,24 @@ def tessdata_dir() -> Path:
             pytrace=False,
         )
     return directory
+
+
+def _tokenizer_path() -> Path:
+    env = os.environ.get("INGEST_CHUNK_TOKENIZER_PATH")
+    return Path(env) if env else REPO / "models" / "embedder" / "tokenizer.json"
+
+
+@pytest.fixture(scope="session")
+def tokenizer_path() -> Path:
+    """Embedder tokenizer.json. Fails (never skips) when it is missing."""
+    path = _tokenizer_path()
+    if not path.is_file():
+        pytest.fail(
+            f"Embedder tokenizer missing at {path}. Run:\n"
+            "  uv run python scripts/download_models.py --only tokenizer --dest models/embedder",
+            pytrace=False,
+        )
+    return path
 
 
 @pytest.fixture

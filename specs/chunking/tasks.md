@@ -55,7 +55,7 @@ the golden/perf tests in task 8 need the real `tokenizer.json`.
       French and code samples.
     - `[tokenizer]` `fingerprint` is stable.
   - _Requirements: 6.1, 6.2, 6.4_
-- [ ] 2.3 CI: model job also covers the tokenizer, in `.github/workflows/ci.yml`
+- [x] 2.3 CI: model job also covers the tokenizer, in `.github/workflows/ci.yml`
   - In the existing OCR job, add a cache step keyed on `scripts/download_models.py` for
     `models/embedder`, run `download_models.py --only tokenizer --dest models/embedder`, then
     `INGEST_CHUNK_TOKENIZER_PATH=$PWD/models/embedder/tokenizer.json uv run pytest -m "ocr or tokenizer"`.
