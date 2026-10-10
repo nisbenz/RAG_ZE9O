@@ -172,7 +172,7 @@ the golden/perf tests in task 8 need the real `tokenizer.json`.
   - _Requirements: 1.2, 1.3, 1.4, 8.1_
 
 - [ ] 8. Corpus-version hook and real-tokenizer checks
-- [ ] 8.1 `chunking_signature(settings, counter) -> str` in `ingest/settings.py` (or `chunk.py`), with
+- [x] 8.1 `chunking_signature(settings, counter) -> str` in `ingest/settings.py` (or `chunk.py`), with
   `CHUNKER_VERSION = 1`
   - sha256 over the sorted `chunk_*` values (excluding the path), `counter.fingerprint` and the
     version.

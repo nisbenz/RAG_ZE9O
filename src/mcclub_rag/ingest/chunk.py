@@ -6,7 +6,9 @@ sections under one parent are merged. Every chunk's ``embed_text`` carries a
 "title > heading path" header for dense and BM25 retrieval. Pure and deterministic.
 """
 
+import hashlib
 import itertools
+import json
 import re
 import statistics
 from collections import Counter
@@ -23,6 +25,10 @@ from mcclub_rag.ingest.tokens import TokenCounter, get_token_counter
 from mcclub_rag.text.sentences import split_sentences, split_words
 
 log = structlog.get_logger(__name__)
+
+# Bump when the algorithm changes output for the same input and settings: it feeds the
+# corpus version, so a bump invalidates the answer cache and triggers a reindex.
+CHUNKER_VERSION = 1
 
 BlockKind = Literal["para", "list", "table", "code"]
 
@@ -509,3 +515,14 @@ def chunk_document(
         hard_splits=sum(item.hard for item in items),
     )
     return tuple(chunks)
+
+
+def chunking_signature(settings: IngestSettings, counter: TokenCounter) -> str:
+    """Hash of everything that changes chunk output; folded into ``corpus_version()``."""
+    values = {
+        name: value
+        for name, value in sorted(settings.model_dump().items())
+        if name.startswith("chunk_") and name != "chunk_tokenizer_path"
+    }
+    payload = {"version": CHUNKER_VERSION, "tokenizer": counter.fingerprint, "settings": values}
+    return hashlib.sha256(json.dumps(payload, sort_keys=True).encode()).hexdigest()
