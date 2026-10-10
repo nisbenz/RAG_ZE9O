@@ -96,3 +96,112 @@ the golden/perf tests in task 8 need the real `tokenizer.json`.
     - Joining the blocks reproduces the body, ignoring whitespace.
   - _Requirements: 3.4_
 
+- [ ] 5. Packing and splitting oversized sections
+- [ ] 5.1 `_split_unit(block, budget, counter)`
+  - Levels in order: para → line → sentence → word → token.
+  - Tables split at rows, repeating the header and separator rows.
+  - Code and lists split at line level.
+  - The token level uses `counter.cut` and increments a `hard_splits` counter.
+  - `TestSplit`:
+    - A 1,000-word paragraph splits at sentences, and every piece ends on a terminator.
+    - An oversized table repeats its header in every piece.
+    - An oversized code block splits only at newlines.
+    - A 600-token single word hard-splits and the pieces rejoin to the original.
+  - _Requirements: 3.1, 3.4, 3.5_
+- [ ] 5.2 `_pack(blocks, target, budget, min_tokens, counter) -> list[list[str]]` with tail rebalance
+  - Greedy packing to `target`, never over `budget`; the separator cost is counted. A small tail
+    first joins its predecessor, otherwise units are shifted back into it.
+  - `TestPack`:
+    - A table that fits is never cut.
+    - No piece exceeds the budget.
+    - A tail under `min` is merged or rebalanced.
+    - The long Arabic H2 sample splits at paragraph boundaries.
+  - _Requirements: 3.1, 3.2, 3.6_
+
+- [ ] 6. Grouping: merging small sections in `chunk.py` (`_group(outline, ...) -> list[_Draft]`)
+  - Rules from design "Grouping":
+    - A heading-only section whose next section is a descendant is absorbed into the path.
+    - Small runs merge under the same parent while `< min` and `≤ target`, with headings kept
+      inline.
+    - The draft path is the longest common prefix of its members' paths.
+    - A leftover small group is appended to the previous draft when the parent matches and the
+      budget allows.
+    - A trailing heading-only section is appended to the previous draft.
+  - Large sections go to `_pack`.
+  - `TestGroup`:
+    - A slide-style document (`# VP`, `## Contents`, `## 01` … `## 07` with 1 to 8 word bodies)
+      gives at most 2 drafts, with `## 01` inline.
+    - Merging never crosses an H1 boundary.
+    - A heading-only H2 followed by an H3 leaves no `## H2` text and the H3 path includes the H2.
+    - A trailing heading-only section ends up in the last draft.
+    - Large sections are never merged with each other.
+  - _Requirements: 2.1, 4.1, 4.2, 4.3, 4.4, 4.5_
+
+- [ ] 7. Finalize and the public `chunk_document()`
+- [ ] 7.1 Header, exact counting, re-pack loop and metadata
+  - `_header(title, path, max_header_tokens, counter)`: dedupe consecutive entries, drop from the
+    left, then `cut`.
+  - `embed_text` is built per `chunk_context_header`.
+  - One `count_many` over all `embed_text`s. Over-limit drafts are re-packed with
+    `budget - overshoot` (at most 3 rounds), then `cut`.
+  - Pages, `section_index`, the language vote and contiguous `index`.
+  - `TestFinalize`:
+    - A title equal to the H1 appears once in the header.
+    - A long path keeps its innermost headings.
+    - `context_header=False` gives `embed_text == text`.
+    - The text never contains the header.
+    - An adversarial counter (whose join cost exceeds the sum of parts) still yields
+      `token_count <= max`.
+    - A merge across pages 3 and 4 gives `page_start=3`, `page_end=4`.
+    - The language vote ignores `und` and falls back to the document language.
+  - _Requirements: 1.1, 3.6, 5.1, 5.2, 5.3, 5.4, 7.1, 7.2_
+- [ ] 7.2 `chunk_document(doc, *, settings=None, counter=None)` and logging
+  - Wire outline → blocks → group → finalize.
+  - Return `()` for a document with no alphanumeric content.
+  - Emit the structlog `document_chunked` event with `title`, `chunks`, `tokens_min`,
+    `tokens_median`, `tokens_max`, `merged`, `hard_splits`; emit `chunk_hard_split` per token cut.
+  - `TestChunkDocument`, parametrized over synthetic documents (docs-site tree, Arabic article,
+    slide PDF, XLSX, plain text, empty), checking these invariants:
+    - `index` is contiguous.
+    - `token_count <= max`.
+    - Lossless coverage (Req 1.3, with repeated table headers exempt).
+    - Determinism: two runs give equal tuples.
+    - An empty document gives `()`.
+  - `capture_logs` checks one `document_chunked` event with the expected keys and no document text
+    in any event.
+  - _Requirements: 1.2, 1.3, 1.4, 8.1_
+
+- [ ] 8. Corpus-version hook and real-tokenizer checks
+- [ ] 8.1 `chunking_signature(settings, counter) -> str` in `ingest/settings.py` (or `chunk.py`), with
+  `CHUNKER_VERSION = 1`
+  - sha256 over the sorted `chunk_*` values (excluding the path), `counter.fingerprint` and the
+    version.
+  - Tests: the signature is stable across calls; it changes when any `chunk_*` field, the counter
+    fingerprint, or `CHUNKER_VERSION` changes; it does not change when only the tokenizer path
+    changes.
+  - _Requirements: 9.1, 9.2_
+- [ ] 8.2 Golden and performance tests with the real tokenizer (`tokenizer` marker)
+  - Extend `tests/fixtures/make_fixtures.py` to write
+    `tests/fixtures/chunking/mcoli_introduction.json`: the list of
+    `(heading_path, page_start, token_count)` from preprocessing `web/mcoli_introduction.html`
+    (mocked fetch, existing helper) and then chunking. Commit it and list it in
+    `tests/fixtures/README.md`.
+  - `tests/test_chunk_golden.py`:
+    - `[tokenizer]` the output equals the golden file.
+    - `[tokenizer]` a synthetic 300-section mixed ar/fr/en document chunks in under 2 s.
+    - `[tokenizer]` every chunk of the golden document is at most 400 granite tokens.
+  - _Requirements: 6.1, 8.2, 2.1_
+
+- [ ] 9. Repo docs kept in sync
+  - `EDGE_CASES.md`: add these rows, each with its evidence (the probe numbers from the design):
+    - The tokenizer's built-in truncation and padding.
+    - The reranker/granite token ratio up to 1.28.
+    - Tiny sections from slide PDFs.
+    - Heading-only sections.
+    - Oversized tables.
+    - Unclosed code fences.
+    - Single words over the budget.
+  - `README.md`: a chunking subsection under architecture/key decisions.
+  - `PROGRESS.md`: dated entry.
+  - `AGENTS.md`: mark `chunk.py` as built and update the "Not yet built" list.
+  - _Requirements: all (keeps repo docs in sync per AGENTS.md)_
