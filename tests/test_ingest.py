@@ -78,6 +78,7 @@ ERROR_TRIGGERS = {
     errors.FetchError: "tests.test_web:test_http_error_status",
     errors.UrlNotAllowed: "tests.test_url_guard:test_internal_addresses_rejected",
     errors.OcrConfigError: "tests.test_preprocess_file:test_missing_tessdata_fails_fast",
+    errors.TokenizerConfigError: "tests.test_tokens:test_missing_tokenizer_raises_with_instruction",
 }
 
 

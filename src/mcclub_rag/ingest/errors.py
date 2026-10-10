@@ -56,6 +56,12 @@ class OcrConfigError(IngestError):
     code = "ocr_config_error"
 
 
+class TokenizerConfigError(IngestError):
+    """Raised at startup when the embedder's tokenizer.json is missing or unreadable."""
+
+    code = "tokenizer_config_error"
+
+
 ALL_ERRORS: tuple[type[IngestError], ...] = (
     InvalidInput,
     FileTooLarge,
@@ -66,4 +72,5 @@ ALL_ERRORS: tuple[type[IngestError], ...] = (
     FetchError,
     UrlNotAllowed,
     OcrConfigError,
+    TokenizerConfigError,
 )

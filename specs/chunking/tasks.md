@@ -5,7 +5,7 @@ keeps CI green (`uv lock --check`, ruff, `pytest -m "not ocr and not tokenizer"`
 Unit tests use a `FakeCounter` (1 token per whitespace-separated word), so only task 2's tests and
 the golden/perf tests in task 8 need the real `tokenizer.json`.
 
-- [ ] 1. Settings, errors and the `Chunk` contract
+- [x] 1. Settings, errors and the `Chunk` contract
 - [x] 1.1 Chunking settings in `src/mcclub_rag/ingest/settings.py`
   - Add `chunk_target_tokens=300`, `chunk_max_tokens=400`, `chunk_min_tokens=80`,
     `chunk_max_header_tokens=48`, `chunk_context_header=True`, and `chunk_tokenizer_path` (default
@@ -16,7 +16,7 @@ the golden/perf tests in task 8 need the real `tokenizer.json`.
   - Tests in `tests/test_settings.py`: the defaults; an env override (`INGEST_CHUNK_MAX_TOKENS=500`);
     `min >= target` and `target > max` both raise `ValidationError`.
   - _Requirements: 6.3, 9.1_
-- [ ] 1.2 `TokenizerConfigError` in `src/mcclub_rag/ingest/errors.py`
+- [x] 1.2 `TokenizerConfigError` in `src/mcclub_rag/ingest/errors.py`
   - Subclass of `IngestError` with code `tokenizer_config_error`, not HTTP-mapped (same as
     `ocr_config_error`).
   - Extend `tests/test_errors.py`: the code is stable and the message carries the instruction.
@@ -26,7 +26,7 @@ the golden/perf tests in task 8 need the real `tokenizer.json`.
   - Extend `tests/test_models.py`: frozen; `heading_path` is a tuple; round-trips `model_dump()`.
   - _Requirements: 1.1, 1.5, 7.1_
 
-- [ ] 2. Token counting
+- [x] 2. Token counting
 - [x] 2.1 Pinned tokenizer download in `scripts/download_models.py`
   - `download_tokenizer(dest)`: fetch `tokenizer.json` from
     `ibm-granite/granite-embedding-311m-multilingual-r2` at revision
@@ -37,7 +37,7 @@ the golden/perf tests in task 8 need the real `tokenizer.json`.
   - Extend `tests/test_download_models.py` (mocked HTTP, as for tessdata): a sha mismatch raises and
     leaves no file; an existing valid file is not re-downloaded; the CLI flag routes correctly.
   - _Requirements: 6.1, 6.2_
-- [ ] 2.2 `src/mcclub_rag/ingest/tokens.py`
+- [x] 2.2 `src/mcclub_rag/ingest/tokens.py`
   - `TokenCounter` protocol (`count`, `count_many`, `cut`, `fingerprint`).
   - `HFTokenCounter(path)`: `Tokenizer.from_file`, then `no_truncation()` and `no_padding()`;
     `add_special_tokens=False`; `cut` splits at `offsets[max_tokens - 1][1]`; `fingerprint` = sha256
