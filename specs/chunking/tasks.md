@@ -76,7 +76,7 @@ the golden/perf tests in task 8 need the real `tokenizer.json`.
   - _Requirements: 3.3, 1.3_
 
 - [ ] 4. Outline and blocks in `src/mcclub_rag/ingest/chunk.py` (private helpers)
-- [ ] 4.1 `_outline(sections) -> list[_OutlineSection]`
+- [x] 4.1 `_outline(sections) -> list[_OutlineSection]`
   - A heading stack reusing `sections._HEADING`; XLSX sheet reset; PDF continuation inherits; the
     heading line is removed from `body` and kept in `heading_line`.
   - `tests/test_chunk.py::TestOutline`:
