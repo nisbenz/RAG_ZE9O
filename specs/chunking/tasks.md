@@ -6,7 +6,7 @@ Unit tests use a `FakeCounter` (1 token per whitespace-separated word), so only 
 the golden/perf tests in task 8 need the real `tokenizer.json`.
 
 - [ ] 1. Settings, errors and the `Chunk` contract
-- [ ] 1.1 Chunking settings in `src/mcclub_rag/ingest/settings.py`
+- [x] 1.1 Chunking settings in `src/mcclub_rag/ingest/settings.py`
   - Add `chunk_target_tokens=300`, `chunk_max_tokens=400`, `chunk_min_tokens=80`,
     `chunk_max_header_tokens=48`, `chunk_context_header=True`, and `chunk_tokenizer_path` (default
     `$MODELS_DIR/embedder/tokenizer.json`, falling back to `/app/models/embedder/tokenizer.json`).
@@ -21,7 +21,7 @@ the golden/perf tests in task 8 need the real `tokenizer.json`.
     `ocr_config_error`).
   - Extend `tests/test_errors.py`: the code is stable and the message carries the instruction.
   - _Requirements: 6.2_
-- [ ] 1.3 `Chunk` model in `src/mcclub_rag/ingest/models.py`
+- [x] 1.3 `Chunk` model in `src/mcclub_rag/ingest/models.py`
   - Frozen pydantic model with the fields from design "Data Models".
   - Extend `tests/test_models.py`: frozen; `heading_path` is a tuple; round-trips `model_dump()`.
   - _Requirements: 1.1, 1.5, 7.1_

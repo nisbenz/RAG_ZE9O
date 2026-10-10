@@ -6,14 +6,19 @@ prefix, except ``TESSDATA_PREFIX``, which is Tesseract's own standard name and i
 already set in the Dockerfile.
 """
 
+import os
 from functools import lru_cache
 from pathlib import Path
-from typing import Literal
+from typing import Literal, Self
 
-from pydantic import Field
+from pydantic import Field, model_validator
 from pydantic_settings import BaseSettings, SettingsConfigDict
 
 _MB = 1024 * 1024
+
+
+def _default_tokenizer_path() -> Path:
+    return Path(os.environ.get("MODELS_DIR", "/app/models")) / "embedder" / "tokenizer.json"
 
 
 class IngestSettings(BaseSettings):
@@ -49,6 +54,22 @@ class IngestSettings(BaseSettings):
     lang_min_prob: float = Field(default=0.5, ge=0, le=1)
     lang_mixed_share: float = Field(default=0.2, gt=0, le=1)
     lang_default: Literal["ar", "fr", "en"] = "fr"
+
+    # Chunking (sizes in embedder tokens; see specs/chunking/design.md for the measurements)
+    chunk_target_tokens: int = Field(default=300, gt=0)
+    chunk_max_tokens: int = Field(default=400, gt=0)
+    chunk_min_tokens: int = Field(default=80, gt=0)
+    chunk_max_header_tokens: int = Field(default=48, gt=0)
+    chunk_context_header: bool = True
+    chunk_tokenizer_path: Path = Field(default_factory=_default_tokenizer_path)
+
+    @model_validator(mode="after")
+    def _check_chunk_sizes(self) -> Self:
+        if not self.chunk_min_tokens < self.chunk_target_tokens <= self.chunk_max_tokens:
+            raise ValueError("chunk sizes must satisfy min < target <= max")
+        if self.chunk_max_header_tokens * 4 >= self.chunk_max_tokens:
+            raise ValueError("chunk_max_header_tokens must be below chunk_max_tokens / 4")
+        return self
 
     @property
     def max_file_bytes(self) -> int:

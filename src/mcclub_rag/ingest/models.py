@@ -44,6 +44,25 @@ class ParsedDocument(BaseModel):
     created_at: datetime  # UTC
 
 
+class Chunk(BaseModel):
+    """One retrieval unit produced by ``ingest/chunk.py`` from a ``ParsedDocument``.
+
+    Chunk ids are deliberately absent: the pipeline derives them from ``doc_id`` and ``index``.
+    """
+
+    model_config = ConfigDict(frozen=True)
+
+    index: int  # 0-based, contiguous within the document
+    text: str  # faithful content: LLM context and snippets
+    embed_text: str  # contextual header + text: dense and BM25 input
+    heading_path: tuple[str, ...]  # outermost first; () when the text has no headings
+    page_start: int | None
+    page_end: int | None
+    section_index: int  # index of the first source section in ParsedDocument.sections
+    language: str  # "ar" | "fr" | "en" | "und"
+    token_count: int  # tokens of embed_text, embedder tokenizer
+
+
 @dataclass(frozen=True)
 class RawPage:
     """One page (PDF/image), sheet (XLSX) or the whole body (DOCX) as extracted."""

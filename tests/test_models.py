@@ -3,7 +3,7 @@ from datetime import UTC, datetime
 import pytest
 from pydantic import ValidationError
 
-from mcclub_rag.ingest.models import ParsedDocument, Section
+from mcclub_rag.ingest.models import Chunk, ParsedDocument, Section
 
 
 def _doc(**overrides) -> ParsedDocument:
@@ -63,3 +63,34 @@ def test_sequences_are_immutable_tuples():
     doc = _doc()
     assert isinstance(doc.sections, tuple)
     assert isinstance(doc.warnings, tuple)
+
+
+def _chunk(**overrides) -> Chunk:
+    fields = {
+        "index": 0,
+        "text": "Le délai est vendredi.",
+        "embed_text": "Hackathon > Inscription\n\nLe délai est vendredi.",
+        "heading_path": ["Hackathon", "Inscription"],
+        "page_start": 2,
+        "page_end": 3,
+        "section_index": 4,
+        "language": "fr",
+        "token_count": 12,
+    }
+    fields.update(overrides)
+    return Chunk(**fields)
+
+
+def test_chunk_heading_path_is_a_tuple():
+    assert _chunk().heading_path == ("Hackathon", "Inscription")
+
+
+def test_chunk_is_frozen():
+    with pytest.raises(ValidationError):
+        _chunk().text = "changed"
+
+
+def test_chunk_round_trips():
+    chunk = _chunk(page_start=None, page_end=None, heading_path=())
+    assert Chunk(**chunk.model_dump()) == chunk
+    assert Chunk.model_validate_json(chunk.model_dump_json()) == chunk
