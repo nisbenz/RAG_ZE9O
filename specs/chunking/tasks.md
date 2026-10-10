@@ -97,7 +97,7 @@ the golden/perf tests in task 8 need the real `tokenizer.json`.
   - _Requirements: 3.4_
 
 - [ ] 5. Packing and splitting oversized sections
-- [ ] 5.1 `_split_unit(block, budget, counter)`
+- [x] 5.1 `_split_unit(block, budget, counter)`
   - Levels in order: para → line → sentence → word → token.
   - Tables split at rows, repeating the header and separator rows.
   - Code and lists split at line level.

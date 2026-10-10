@@ -1,6 +1,8 @@
-from mcclub_rag.ingest.chunk import _outline, _parse_blocks
+import itertools
+
+from mcclub_rag.ingest.chunk import _outline, _pack, _parse_blocks, _render, _units
 from mcclub_rag.ingest.models import Section
-from tests.chunk_helpers import FakeCounter, md
+from tests.chunk_helpers import FakeCounter, md, words
 
 COUNTER = FakeCounter()
 
@@ -89,3 +91,50 @@ class TestBlocks:
         body = "a b\n\n- c\n- d\n\n| e |\n|---|\n\n```\nf\n```\n\n\ng"
         joined = "".join(b.text for b in _parse_blocks(body, COUNTER))
         assert "".join(joined.split()) == "".join(body.split())
+
+
+def _units_of(body, target=30, budget=40, counter=COUNTER):
+    return _units(_parse_blocks(body, counter), target, budget, counter, itertools.count())
+
+
+class CharCounter(FakeCounter):
+    """One token per character, so a single long word can exceed the budget."""
+
+    def count(self, text):
+        return len(text)
+
+    def cut(self, text, max_tokens):
+        return text[:max_tokens], text[max_tokens:]
+
+
+class TestSplit:
+    def test_long_paragraph_splits_at_sentences(self):
+        body = " ".join(f"{words(9)} fin{i}." for i in range(100))  # 1,000 words
+        pieces = [_render(p) for p in _pack(_units_of(body), 30, 40, 5, 0)]
+        assert len(pieces) > 10
+        assert all(p.endswith(".") for p in pieces)
+        assert all(COUNTER.count(p) <= 40 for p in pieces)
+
+    def test_oversized_table_repeats_header(self):
+        rows = "\n".join(f"| {words(4)} | r{i} |" for i in range(100))
+        body = f"| Name | Role |\n|---|---|\n{rows}"
+        units = _units_of(body)
+        assert len(units) > 1
+        assert all(u.text.startswith("| Name | Role |\n|---|---|\n|") for u in units)
+        assert all(u.tokens <= 40 for u in units)
+        assert sum(u.text.count("| r") for u in units) == 100
+
+    def test_oversized_code_splits_at_newlines(self):
+        lines = [f"x{i} = {words(5)}" for i in range(50)]
+        body = "```\n" + "\n".join(lines) + "\n```"
+        units = _units_of(body)
+        assert len(units) > 1
+        for unit in units:
+            assert all(line in body.split("\n") for line in unit.text.strip().split("\n"))
+
+    def test_single_huge_word_is_cut_losslessly(self):
+        word = "x" * 600
+        units = _units_of(word, target=80, budget=100, counter=CharCounter())
+        assert len(units) == 6
+        assert all(u.hard for u in units)
+        assert "".join(u.text for u in units) == word
