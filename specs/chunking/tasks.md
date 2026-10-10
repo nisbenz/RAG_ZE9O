@@ -137,8 +137,8 @@ the golden/perf tests in task 8 need the real `tokenizer.json`.
     - Large sections are never merged with each other.
   - _Requirements: 2.1, 4.1, 4.2, 4.3, 4.4, 4.5_
 
-- [ ] 7. Finalize and the public `chunk_document()`
-- [ ] 7.1 Header, exact counting, re-pack loop and metadata
+- [x] 7. Finalize and the public `chunk_document()`
+- [x] 7.1 Header, exact counting, re-pack loop and metadata
   - `_header(title, path, max_header_tokens, counter)`: dedupe consecutive entries, drop from the
     left, then `cut`.
   - `embed_text` is built per `chunk_context_header`.
@@ -155,7 +155,7 @@ the golden/perf tests in task 8 need the real `tokenizer.json`.
     - A merge across pages 3 and 4 gives `page_start=3`, `page_end=4`.
     - The language vote ignores `und` and falls back to the document language.
   - _Requirements: 1.1, 3.6, 5.1, 5.2, 5.3, 5.4, 7.1, 7.2_
-- [ ] 7.2 `chunk_document(doc, *, settings=None, counter=None)` and logging
+- [x] 7.2 `chunk_document(doc, *, settings=None, counter=None)` and logging
   - Wire outline → blocks → group → finalize.
   - Return `()` for a document with no alphanumeric content.
   - Emit the structlog `document_chunked` event with `title`, `chunks`, `tokens_min`,

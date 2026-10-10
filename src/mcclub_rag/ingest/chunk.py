@@ -8,20 +8,29 @@ sections under one parent are merged. Every chunk's ``embed_text`` carries a
 
 import itertools
 import re
+import statistics
+from collections import Counter
 from collections.abc import Callable, Iterator, Sequence
 from dataclasses import dataclass, field
 from typing import Literal
 
-from mcclub_rag.ingest.models import Section
+import structlog
+
+from mcclub_rag.ingest.models import Chunk, ParsedDocument, Section
 from mcclub_rag.ingest.sections import _HEADING
-from mcclub_rag.ingest.tokens import TokenCounter
+from mcclub_rag.ingest.settings import IngestSettings, get_ingest_settings
+from mcclub_rag.ingest.tokens import TokenCounter, get_token_counter
 from mcclub_rag.text.sentences import split_sentences, split_words
+
+log = structlog.get_logger(__name__)
 
 BlockKind = Literal["para", "list", "table", "code"]
 
 _FENCE = re.compile(r"^\s*(```|~~~)")
 _LIST_ITEM = re.compile(r"^\s*(?:[-*+•]|\d+[.)])\s")
 _TABLE_SEPARATOR = re.compile(r"^\s*\|?\s*:?-{3,}")
+_REPACK_ROUNDS = 3
+_LANGUAGES = ("ar", "fr", "en")
 
 
 def _lines(text: str) -> list[str]:
@@ -358,3 +367,145 @@ def _group(
         drafts.append(draft)
         i = j
     return drafts
+
+
+def _paragraphs(text: str) -> list[str]:
+    return re.split(r"(?<=\n\n)", text)
+
+
+_RESPLIT_LEVELS = (_paragraphs, _lines, split_sentences, split_words)
+
+
+def _header(title: str, path: tuple[str, ...], max_tokens: int, counter: TokenCounter) -> str:
+    """'title > h1 > h2' without consecutive repeats, trimmed from the left to fit."""
+    entries: list[str] = []
+    for entry in (title, *path):
+        entry = entry.strip()
+        if entry and (not entries or entries[-1].casefold() != entry.casefold()):
+            entries.append(entry)
+    while len(entries) > 1 and counter.count(" > ".join(entries)) > max_tokens:
+        entries.pop(0)
+    header = " > ".join(entries)
+    if counter.count(header) > max_tokens:
+        header = counter.cut(header, max_tokens)[0].rstrip()
+    return header
+
+
+def _language(sections: Sequence[_OutlineSection], doc_language: str) -> str:
+    weights: Counter[str] = Counter()
+    for section in sections:
+        if section.language in _LANGUAGES:
+            weights[section.language] += len(section.body)
+    if weights:
+        return max(sorted(weights), key=weights.__getitem__)
+    return doc_language if doc_language in _LANGUAGES else "und"
+
+
+@dataclass
+class _Final:
+    path: tuple[str, ...]
+    text: str
+    sections: list[_OutlineSection]
+    hard: bool
+
+
+def chunk_document(
+    doc: ParsedDocument,
+    *,
+    settings: IngestSettings | None = None,
+    counter: TokenCounter | None = None,
+) -> tuple[Chunk, ...]:
+    """Split a preprocessed document into retrieval chunks (pure, deterministic)."""
+    settings = settings or get_ingest_settings()
+    counter = counter or get_token_counter(settings)
+    outline = _outline(doc.sections)
+    if not any(ch.isalnum() for s in outline for ch in s.body + (s.heading_line or "")):
+        return ()
+    sep = counter.count("\n\n")
+    headers: dict[tuple[str, ...], tuple[str, int]] = {}
+
+    def header(path: tuple[str, ...]) -> tuple[str, int]:
+        if not settings.chunk_context_header:
+            return "", 0
+        if path not in headers:
+            text = _header(doc.title, path, settings.chunk_max_header_tokens, counter)
+            headers[path] = (text, counter.count(text) + sep if text else 0)
+        return headers[path]
+
+    def limits(path: tuple[str, ...]) -> tuple[int, int]:
+        budget = settings.chunk_max_tokens - header(path)[1]
+        target = max(settings.chunk_target_tokens - header(path)[1], settings.chunk_min_tokens)
+        return min(target, budget), budget
+
+    def embed(item: _Final) -> str:
+        text = header(item.path)[0]
+        return f"{text}\n\n{item.text}" if text else item.text
+
+    drafts = _group(outline, counter, limits, settings.chunk_min_tokens)
+    items = [
+        _Final(
+            d.path,
+            _draft_text(d),
+            [p.section for p in d.parts],
+            any(u.hard for p in d.parts for u in p.units),
+        )
+        for d in drafts
+    ]
+    items = [item for item in items if item.text]
+    # Sums of unit counts can differ from the count of the joined text by a few tokens at
+    # junctions: re-split anything over the cap with a tighter budget, then cut tokens.
+    for round_ in range(_REPACK_ROUNDS + 1):
+        counts = counter.count_many([embed(item) for item in items])
+        if all(n <= settings.chunk_max_tokens for n in counts):
+            break
+        resplit: list[_Final] = []
+        for item, n in zip(items, counts, strict=True):
+            if n <= settings.chunk_max_tokens:
+                resplit.append(item)
+                continue
+            target, budget = limits(item.path)
+            budget = max(budget - (n - settings.chunk_max_tokens) * (round_ + 1), 1)
+            if round_ < _REPACK_ROUNDS:
+                units = _split_text(item.text, budget, counter, _RESPLIT_LEVELS, 0)
+                pieces = _pack(units, min(target, budget), budget, settings.chunk_min_tokens, 0)
+            else:  # last resort: plain token cuts, never re-joined
+                pieces = [[unit] for unit in _split_text(item.text, budget, counter, (), 0)]
+            for piece in pieces:
+                text = "".join(u.text for u in piece).strip()
+                hard = item.hard or any(u.hard for u in piece)
+                if text:
+                    resplit.append(_Final(item.path, text, item.sections, hard))
+        items = resplit
+    else:
+        counts = counter.count_many([embed(item) for item in items])
+
+    chunks = []
+    for index, (item, n) in enumerate(zip(items, counts, strict=True)):
+        pages = [s.page for s in item.sections if s.page is not None]
+        chunks.append(
+            Chunk(
+                index=index,
+                text=item.text,
+                embed_text=embed(item),
+                heading_path=item.path,
+                page_start=min(pages, default=None),
+                page_end=max(pages, default=None),
+                section_index=item.sections[0].index,
+                language=_language(item.sections, doc.language),
+                token_count=n,
+            )
+        )
+        if item.hard:
+            log.warning("chunk_hard_split", content_hash=doc.content_hash, chunk_index=index)
+    sizes = [c.token_count for c in chunks]
+    log.info(
+        "document_chunked",
+        content_hash=doc.content_hash,
+        chunks=len(chunks),
+        tokens_min=min(sizes, default=0),
+        tokens_median=statistics.median_low(sizes) if sizes else 0,
+        tokens_max=max(sizes, default=0),
+        merged=sum(len({s.index for s in item.sections}) - 1 for item in items),
+        hard_splits=sum(item.hard for item in items),
+    )
+    return tuple(chunks)
