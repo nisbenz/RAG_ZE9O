@@ -1,6 +1,6 @@
 import itertools
 
-from mcclub_rag.ingest.chunk import _outline, _pack, _parse_blocks, _render, _units
+from mcclub_rag.ingest.chunk import _outline, _pack, _parse_blocks, _render, _size, _Unit, _units
 from mcclub_rag.ingest.models import Section
 from tests.chunk_helpers import FakeCounter, md, words
 
@@ -138,3 +138,42 @@ class TestSplit:
         assert len(units) == 6
         assert all(u.hard for u in units)
         assert "".join(u.text for u in units) == word
+
+
+def _u(tokens, block):
+    return _Unit(" ".join(["w"] * tokens), tokens, block)
+
+
+class TestPack:
+    def test_block_that_fits_budget_is_never_cut(self):
+        table = "| a | b |\n|---|---|\n" + "\n".join(f"| {i} | x |" for i in range(8))
+        units = _units_of(table, target=10, budget=60)
+        assert len(units) == 1
+        assert _render(units) == table
+
+    def test_no_piece_exceeds_target_or_budget(self):
+        units = [_u(n, i) for i, n in enumerate([5, 17, 3, 30, 12, 8, 25, 1, 9, 14])]
+        pieces = _pack(units, target=30, budget=40, min_tokens=5, sep=1)
+        assert all(_size(p, 1) <= 30 for p in pieces[:-1])
+        assert all(_size(p, 1) <= 40 for p in pieces)
+        assert [u for p in pieces for u in p] == units
+
+    def test_small_tail_joins_previous(self):
+        pieces = _pack([_u(25, 0), _u(10, 1), _u(3, 2)], target=30, budget=40, min_tokens=8, sep=1)
+        assert [_size(p, 1) for p in pieces] == [25, 14]
+
+    def test_small_tail_is_rebalanced_when_it_cannot_join(self):
+        units = [_u(10, 0), _u(10, 1), _u(10, 2), _u(3, 3)]
+        pieces = _pack(units, target=32, budget=32, min_tokens=8, sep=0)
+        assert [_size(p, 0) for p in pieces] == [20, 13]
+
+    def test_render_joins_blocks_with_blank_lines(self):
+        units = [_Unit("Hello ", 1, 0), _Unit("world.", 1, 0), _Unit("- item", 2, 1)]
+        assert _render(units) == "Hello world.\n\n- item"
+
+    def test_arabic_section_splits_at_paragraphs(self):
+        paragraph = " ".join(["الصمود في غزة"] * 6) + "."
+        body = "\n\n".join([paragraph] * 6)  # 6 paragraphs of 18 words
+        pieces = [_render(p) for p in _pack(_units_of(body), 30, 40, 5, 0)]
+        assert all(p.count(paragraph) >= 1 for p in pieces)
+        assert "".join(pieces).replace("\n", "") == body.replace("\n", "")

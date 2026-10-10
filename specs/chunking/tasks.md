@@ -96,7 +96,7 @@ the golden/perf tests in task 8 need the real `tokenizer.json`.
     - Joining the blocks reproduces the body, ignoring whitespace.
   - _Requirements: 3.4_
 
-- [ ] 5. Packing and splitting oversized sections
+- [x] 5. Packing and splitting oversized sections
 - [x] 5.1 `_split_unit(block, budget, counter)`
   - Levels in order: para → line → sentence → word → token.
   - Tables split at rows, repeating the header and separator rows.
@@ -108,7 +108,7 @@ the golden/perf tests in task 8 need the real `tokenizer.json`.
     - An oversized code block splits only at newlines.
     - A 600-token single word hard-splits and the pieces rejoin to the original.
   - _Requirements: 3.1, 3.4, 3.5_
-- [ ] 5.2 `_pack(blocks, target, budget, min_tokens, counter) -> list[list[str]]` with tail rebalance
+- [x] 5.2 `_pack(blocks, target, budget, min_tokens, counter) -> list[list[str]]` with tail rebalance
   - Greedy packing to `target`, never over `budget`; the separator cost is counted. A small tail
     first joins its predecessor, otherwise units are shifted back into it.
   - `TestPack`:
