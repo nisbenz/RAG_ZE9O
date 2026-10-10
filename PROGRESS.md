@@ -1,5 +1,25 @@
 # Progress
 
+## 2026-10-10
+
+### Shipped
+
+- Chunking spec (`specs/chunking/`), researched against published benchmarks (sentence-aware
+  splitting best for Arabic RAG; no overlap; no semantic chunking; contextual headers).
+- `chunk_document()`: heading paths rebuilt from the sections, oversized sections split at
+  paragraphs → lines → sentences → words → tokens, tables/lists/code kept whole, small sections
+  merged, "title > path" header for retrieval, exact token cap on the embedder tokenizer.
+- Embedder `tokenizer.json` downloaded at build (pinned revision, sha256-verified); new `tokenizer`
+  test marker, run in the CI models job.
+- Real corpus check: VP candidacy PDF 40 sections → 10 chunks, Arabic article 11 → 23 chunks
+  (132–340 tokens), all under the 400-token cap.
+
+### Next
+
+- Pipeline spec: embedding (granite ONNX), Qdrant hybrid store, `corpus_version()` using
+  `chunking_signature()`, reranker `max_length` ≥ 640.
+- Eval: chunk target 200/300/400 × header on/off on `eval/questions.jsonl` (hit@5, MRR, Arabic subset).
+
 ## 2026-10-09
 
 ### Shipped

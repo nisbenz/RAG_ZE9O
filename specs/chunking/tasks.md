@@ -192,7 +192,7 @@ the golden/perf tests in task 8 need the real `tokenizer.json`.
     - `[tokenizer]` every chunk of the golden document is at most 400 granite tokens.
   - _Requirements: 6.1, 8.2, 2.1_
 
-- [ ] 9. Repo docs kept in sync
+- [x] 9. Repo docs kept in sync
   - `EDGE_CASES.md`: add these rows, each with its evidence (the probe numbers from the design):
     - The tokenizer's built-in truncation and padding.
     - The reranker/granite token ratio up to 1.28.

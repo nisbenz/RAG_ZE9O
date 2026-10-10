@@ -30,8 +30,8 @@ Two people, each owning a slice. Do not edit the other's files or journal withou
 
 - **Spec-driven.** Features get `specs/<feature>/requirements.md`, `design.md`, `tasks.md`
   (see `specs/data-preprocessing/`). Read the relevant spec before touching that area; keep it in
-  sync with the code. Next spec to write: the ingest pipeline (chunking, embedding with granite
-  ONNX, Qdrant hybrid store, `corpus_version()`).
+  sync with the code. Chunking is spec'd and built (`specs/chunking/`). Next spec to write: the
+  ingest pipeline (embedding with granite ONNX, Qdrant hybrid store, `corpus_version()`).
 - **Test-first** per task; tick the task in `tasks.md` when done.
 - Branches: work on feature branches (e.g. `nisbenz/data-preprocessing`) into `dev`; `dev` into `main`.
   Conventional commits (`feat:`, `fix:`, `docs:`, `chore:`).
@@ -141,7 +141,9 @@ eval/           questions.jsonl, run_eval.py
 tests/          conftest.py, test_api_contract.py, test_access.py, test_ingest.py, test_gate.py
 ```
 
-Not yet built: `chunk.py`, `pipeline.py`, `retrieval/`, `llm/`, `api/`, `answer.py` and the other
+Built: preprocessing (below) and chunking (`ingest/chunk.py`, `ingest/tokens.py`,
+`text/sentences.py`; `chunk_document(doc) -> tuple[Chunk, ...]`, sizes in embedder tokens,
+`chunking_signature()` for the corpus version). Not yet built: `pipeline.py`, `retrieval/`, `llm/`, `api/`, `answer.py` and the other
 top-level modules. Don't create planned files unless the task asks.
 
 ## Configuration

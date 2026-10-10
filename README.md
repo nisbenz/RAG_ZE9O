@@ -47,6 +47,11 @@ tests/          conftest.py, test_api_contract.py, test_access.py, test_ingest.p
 - granite-311m-r2 as the default embedder; harrier-270m / bge-m3 / F2LLM-v2-330M to be A/B
   tested on the eval set (hit@5 and MRR, Arabic subset).
 - Exact-match cache keyed by question + role + corpus version, instead of a semantic answer cache.
+- Chunking ([spec](specs/chunking/)): structure first (headings), then paragraphs, lines and
+  sentences (Arabic `؟ ؛ ۔` aware), size last. Target 300 / max 400 / min 80 **embedder tokens**,
+  no overlap, tiny sections merged under their parent, and a "title > heading path" header
+  prepended to the embedded and BM25 text. Semantic (embedding-based) chunking and overlap were
+  rejected on published benchmarks; the sizes are settings so they can be A/B tested.
 
 ## Evaluation
 
